@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.008.001.08" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:iso:std:iso:20022:tech:xsd:pain.008.001.08 pain.008.001.08.xsd">
+ <CstmrDrctDbtInitn>
+  <GrpHdr>
+   <MsgId>0000455216</MsgId>
+   <CreDtTm>2024-10-16T15:03:52</CreDtTm>
+   <NbOfTxs>1</NbOfTxs>
+   <CtrlSum>5.00</CtrlSum>
+   <InitgPty>
+    <Nm>DOCMORRIS N.V.</Nm>
+   </InitgPty>
+  </GrpHdr>
+  <PmtInf>
+   <PmtInfId>0000455216-000001</PmtInfId>
+   <PmtMtd>DD</PmtMtd>
+   <BtchBookg>1</BtchBookg>
+   <NbOfTxs>1</NbOfTxs>
+   <CtrlSum>5.00</CtrlSum>
+   <ReqdColltnDt>2024-10-16</ReqdColltnDt>
+   <Cdtr>
+    <Nm>DocMorris N.V.</Nm>
+    <PstlAdr>
+     <TwnNm>Heerlen</TwnNm>
+     <Ctry>NL</Ctry>
+    </PstlAdr>
+    <CtryOfRes>NL</CtryOfRes>
+   </Cdtr>
+   <CdtrAcct>
+    <Id>
+     <IBAN>DE11600202900611022468</IBAN>
+    </Id>
+   </CdtrAcct>
+   <CdtrAgt>
+    <FinInstnId>
+     <BICFI>HYVEDEMM473</BICFI>
+    </FinInstnId>
+   </CdtrAgt>
+   <DrctDbtTxInf>
+    <PmtId>
+     <InstrId>02-010009348052</InstrId>
+     <EndToEndId>10009348052</EndToEndId>
+    </PmtId>
+    <PmtTpInf>
+     <InstrPrty>NORM</InstrPrty>
+    </PmtTpInf>
+    <InstdAmt Ccy="EUR">5.00</InstdAmt>
+    <ChrgBr>SHAR</ChrgBr>
+    <DrctDbtTx>
+     <MndtRltdInf>
+      <MndtId>151048155320230109</MndtId>
+      <DtOfSgntr>2023-01-09</DtOfSgntr>
+      <AmdmntInd>false</AmdmntInd>
+     </MndtRltdInf>
+    </DrctDbtTx>
+    <DbtrAgt>
+     <FinInstnId>
+      <BICFI>SCFBDE33XXX</BICFI>
+      <PstlAdr>
+       <Ctry>DE</Ctry>
+      </PstlAdr>
+     </FinInstnId>
+    </DbtrAgt>
+    <Dbtr>
+     <Nm>Haucke</Nm>
+     <PstlAdr>
+      <StrtNm>Kopernikusstr.</StrtNm>
+      <BldgNb>37</BldgNb>
+      <TwnNm>Halle</TwnNm>
+      <Ctry>DE</Ctry>
+     </PstlAdr>
+    </Dbtr>
+    <DbtrAcct>
+     <Id>
+      <IBAN>DE53310108339910145329</IBAN>
+     </Id>
+     <Nm>Haucke</Nm>
+    </DbtrAcct>
+    <RgltryRptg>
+     <Dtls>
+      <Amt Ccy="EUR">5.00</Amt>
+     </Dtls>
+    </RgltryRptg>
+    <Tax>
+     <Dbtr>
+      <TaxId>NL808637642B01</TaxId>
+     </Dbtr>
+     <RefNb>0000002063</RefNb>
+     <Dt>2024-10-16</Dt>
+     <Rcrd>
+      <Tp>WHT</Tp>
+      <TaxAmt>
+       <TaxblBaseAmt Ccy="EUR">0.00</TaxblBaseAmt>
+       <TtlAmt Ccy="EUR">0.00</TtlAmt>
+      </TaxAmt>
+     </Rcrd>
+    </Tax>
+    <RmtInf>
+     <Ustrd>2063618728           5,00Ihre Online-Apotheke sagt Danke</Ustrd>
+    </RmtInf>
+   </DrctDbtTxInf>
+  </PmtInf>
+ </CstmrDrctDbtInitn>
+</Document>

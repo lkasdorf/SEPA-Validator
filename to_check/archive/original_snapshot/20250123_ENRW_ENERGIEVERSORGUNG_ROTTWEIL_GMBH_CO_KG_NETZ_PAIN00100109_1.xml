@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09 pain.001.001.09_CCU_GBIC_5.xsd">
+	<CstmrCdtTrfInitn>
+		<GrpHdr>
+			<MsgId>0000004408</MsgId>
+			<CreDtTm>2025-01-23T18:07:17</CreDtTm>
+			<NbOfTxs>1</NbOfTxs>
+			<CtrlSum>3687.55</CtrlSum>
+			<InitgPty>
+				<Nm>ENRW ENERGIEVERSORGUNG ROTTWEIL GMBH  CO. KG (NETZ)</Nm>
+			</InitgPty>
+		</GrpHdr>
+		<PmtInf>
+			<PmtInfId>0000004408-000001</PmtInfId>
+			<PmtMtd>TRF</PmtMtd>
+			<NbOfTxs>1</NbOfTxs>
+			<CtrlSum>3687.55</CtrlSum>
+			<PmtTpInf>
+				<SvcLvl>
+					<Cd>URGP</Cd>
+				</SvcLvl>
+			</PmtTpInf>
+			<ReqdExctnDt>
+				<Dt>2025-01-23</Dt>
+			</ReqdExctnDt>
+			<Dbtr>
+				<Nm>ENRW Energieversorgung Rottweil GmbH  Co. KG (Netz)</Nm>
+				<PstlAdr>
+					<StrtNm>Stuttgarter Strasse</StrtNm>
+					<BldgNb>80-82</BldgNb>
+					<PstCd>78628</PstCd>
+					<TwnNm>Rottweil</TwnNm>
+					<Ctry>DE</Ctry>
+				</PstlAdr>
+			</Dbtr>
+			<DbtrAcct>
+				<Id>
+					<IBAN>DE46642500400000103244</IBAN>
+				</Id>
+				<Ccy>EUR</Ccy>
+			</DbtrAcct>
+			<DbtrAgt>
+				<FinInstnId>
+					<BICFI>SOLADES1RWL</BICFI>
+				</FinInstnId>
+			</DbtrAgt>
+			<ChrgBr>SHAR</ChrgBr>
+			<CdtTrfTxInf>
+				<PmtId>
+					<InstrId>02-011400053996</InstrId>
+					<EndToEndId>NOTPROVIDED</EndToEndId>
+				</PmtId>
+				<Amt>
+					<InstdAmt Ccy="EUR">3687.55</InstdAmt>
+				</Amt>
+				<CdtrAgt>
+					<FinInstnId>
+						<BICFI>GENODES1VRW</BICFI>
+					</FinInstnId>
+				</CdtrAgt>
+				<Cdtr>
+					<Nm>Baerbel Philipp-Harlacher</Nm>
+					<PstlAdr>
+						<StrtNm>Konrad-Witz-Strasse</StrtNm>
+						<BldgNb>20</BldgNb>
+						<PstCd>78628</PstCd>
+						<TwnNm>Rottweil</TwnNm>
+						<CtrySubDvsn>08</CtrySubDvsn>
+						<Ctry>DE</Ctry>
+					</PstlAdr>
+				</Cdtr>
+				<CdtrAcct>
+					<Id>
+						<IBAN>DE23642901200018071007</IBAN>
+					</Id>
+				</CdtrAcct>
+				<RmtInf>
+					<Ustrd>B11400053996 Vertragskonto 2000103412</Ustrd>
+				</RmtInf>
+			</CdtTrfTxInf>
+		</PmtInf>
+	</CstmrCdtTrfInitn>
+</Document>

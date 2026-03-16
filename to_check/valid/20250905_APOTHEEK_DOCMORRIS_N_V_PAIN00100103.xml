@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xsi:schemaLocation="urn:iso:std:iso:20022:tech:xsd:pain.001.001.03 pain.001.001.03.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.03">
+	<CstmrCdtTrfInitn>
+		<GrpHdr>
+			<MsgId>0000461314</MsgId>
+			<CreDtTm>2025-09-05T15:52:54</CreDtTm>
+			<NbOfTxs>1</NbOfTxs>
+			<CtrlSum>15.43</CtrlSum>
+			<InitgPty>
+				<Nm>Apotheek DocMorris N.V.</Nm>
+			</InitgPty>
+		</GrpHdr>
+		<PmtInf>
+			<PmtInfId>0000461314-000001</PmtInfId>
+			<PmtMtd>TRF</PmtMtd>
+			<NbOfTxs>1</NbOfTxs>
+			<CtrlSum>15.43</CtrlSum>
+			<PmtTpInf>
+				<SvcLvl>
+					<Cd>SEPA</Cd>
+				</SvcLvl>
+			</PmtTpInf>
+			<ReqdExctnDt>2025-09-05</ReqdExctnDt>
+			<Dbtr>
+				<Nm>DocMorris N.V.</Nm>
+				<PstlAdr>
+					<Ctry>NL</Ctry>
+					<AdrLine>Heerlen</AdrLine>
+				</PstlAdr>
+			</Dbtr>
+			<DbtrAcct>
+				<Id>
+					<IBAN>DE11600202900611022468</IBAN>
+				</Id>
+			</DbtrAcct>
+			<DbtrAgt>
+				<FinInstnId>
+					<BIC>HYVEDEMM473</BIC>
+				</FinInstnId>
+			</DbtrAgt>
+			<ChrgBr>SLEV</ChrgBr>
+			<CdtTrfTxInf>
+				<PmtId>
+					<InstrId>02-020009695129</InstrId>
+					<EndToEndId>20009695129</EndToEndId>
+				</PmtId>
+				<Amt>
+					<InstdAmt Ccy="EUR">15.43</InstdAmt>
+				</Amt>
+				<CdtrAgt>
+					<FinInstnId>
+						<BIC>PBNKDEFFXXX</BIC>
+					</FinInstnId>
+				</CdtrAgt>
+				<Cdtr>
+					<Nm>Marga Taubert</Nm>
+				</Cdtr>
+				<CdtrAcct>
+					<Id>
+						<IBAN>DE07100100100020894129</IBAN>
+					</Id>
+				</CdtrAcct>
+				<RmtInf>
+					<Ustrd>RX Bonus Auszahlung</Ustrd>
+				</RmtInf>
+			</CdtTrfTxInf>
+		</PmtInf>
+	</CstmrCdtTrfInitn>
+</Document>

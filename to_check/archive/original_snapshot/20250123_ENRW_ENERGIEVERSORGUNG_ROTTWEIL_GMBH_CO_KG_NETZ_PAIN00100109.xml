@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09 pain.001.001.09.xsd">
+	<CstmrCdtTrfInitn>
+		<GrpHdr>
+			<MsgId>0000004610</MsgId>
+			<CreDtTm>2025-01-23T18:12:10</CreDtTm>
+			<NbOfTxs>1</NbOfTxs>
+			<CtrlSum>103.35</CtrlSum>
+			<InitgPty>
+				<Nm>ENRW ENERGIEVERSORGUNG ROTTWEIL GMBH  CO. KG (NETZ)</Nm>
+			</InitgPty>
+		</GrpHdr>
+		<PmtInf>
+			<PmtInfId>0000004610-000001</PmtInfId>
+			<PmtMtd>TRF</PmtMtd>
+			<NbOfTxs>1</NbOfTxs>
+			<CtrlSum>103.35</CtrlSum>
+			<PmtTpInf>
+				<SvcLvl>
+					<Cd>SEPA</Cd>
+				</SvcLvl>
+			</PmtTpInf>
+			<ReqdExctnDt>
+				<Dt>2025-01-23</Dt>
+			</ReqdExctnDt>
+			<Dbtr>
+				<Nm>ENRW Energieversorgung Rottweil GmbH  Co. KG (Netz)</Nm>
+				<PstlAdr>
+					<StrtNm>Stuttgarter Strasse</StrtNm>
+					<BldgNb>80-82</BldgNb>
+					<PstCd>78628</PstCd>
+					<TwnNm>Rottweil</TwnNm>
+					<Ctry>DE</Ctry>
+				</PstlAdr>
+			</Dbtr>
+			<DbtrAcct>
+				<Id>
+					<IBAN>DE12642901200025000012</IBAN>
+				</Id>
+				<Ccy>EUR</Ccy>
+			</DbtrAcct>
+			<DbtrAgt>
+				<FinInstnId>
+					<BICFI>GENODES1VRW</BICFI>
+				</FinInstnId>
+			</DbtrAgt>
+			<ChrgBr>SLEV</ChrgBr>
+			<CdtTrfTxInf>
+				<PmtId>
+					<InstrId>02-011500047524</InstrId>
+					<EndToEndId>NOTPROVIDED</EndToEndId>
+				</PmtId>
+				<Amt>
+					<InstdAmt Ccy="EUR">103.35</InstdAmt>
+				</Amt>
+				<CdtrAgt>
+					<FinInstnId>
+						<BICFI>SOLADES1RWL</BICFI>
+					</FinInstnId>
+				</CdtrAgt>
+				<Cdtr>
+					<Nm>Barbara Bechtold</Nm>
+					<PstlAdr>
+						<StrtNm>Berauer Str.</StrtNm>
+						<BldgNb>11</BldgNb>
+						<PstCd>78628</PstCd>
+						<TwnNm>Rottweil</TwnNm>
+						<CtrySubDvsn>08</CtrySubDvsn>
+						<Ctry>DE</Ctry>
+					</PstlAdr>
+				</Cdtr>
+				<CdtrAcct>
+					<Id>
+						<IBAN>DE60642500400000729903</IBAN>
+					</Id>
+				</CdtrAcct>
+				<RmtInf>
+					<Ustrd>B11500047524 Vertragskonto 2000049560</Ustrd>
+				</RmtInf>
+			</CdtTrfTxInf>
+		</PmtInf>
+	</CstmrCdtTrfInitn>
+</Document>

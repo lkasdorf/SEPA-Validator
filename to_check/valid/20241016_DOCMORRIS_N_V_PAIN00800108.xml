@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.008.001.08" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:iso:std:iso:20022:tech:xsd:pain.008.001.08 pain.008.001.08.xsd">
+	<CstmrDrctDbtInitn>
+		<GrpHdr>
+			<MsgId>0000458219</MsgId>
+			<CreDtTm>2025-07-30T14:27:47</CreDtTm>
+			<NbOfTxs>1</NbOfTxs>
+			<CtrlSum>5.00</CtrlSum>
+			<InitgPty>
+				<Nm>DOCMORRIS N.V.</Nm>
+			</InitgPty>
+		</GrpHdr>
+		<PmtInf>
+			<PmtInfId>0000458219-000001</PmtInfId>
+			<PmtMtd>DD</PmtMtd>
+			<NbOfTxs>1</NbOfTxs>
+			<CtrlSum>5.00</CtrlSum>
+			<PmtTpInf>
+				<SvcLvl>
+					<Cd>SEPA</Cd>
+				</SvcLvl>
+				<LclInstrm>
+					<Cd>CORE</Cd>
+				</LclInstrm>
+				<SeqTp>RCUR</SeqTp>
+			</PmtTpInf>
+			<ReqdColltnDt>2024-10-16</ReqdColltnDt>
+			<Cdtr>
+				<Nm>DocMorris N.V.</Nm>
+				<PstlAdr>
+					<StrtNm>Avantisallee</StrtNm>
+					<PstCd>6422 RA</PstCd>
+					<TwnNm>Heerlen</TwnNm>
+					<Ctry>NL</Ctry>
+				</PstlAdr>
+			</Cdtr>
+			<CdtrAcct>
+				<Id>
+					<IBAN>DE11600202900611022468</IBAN>
+				</Id>
+				<Ccy>EUR</Ccy>
+			</CdtrAcct>
+			<CdtrAgt>
+				<FinInstnId>
+					<BICFI>HYVEDEMM473</BICFI>
+				</FinInstnId>
+			</CdtrAgt>
+			<ChrgBr>SLEV</ChrgBr>
+			<DrctDbtTxInf>
+				<PmtId>
+					<InstrId>02-010009348052</InstrId>
+					<EndToEndId>10009348052</EndToEndId>
+				</PmtId>
+				<InstdAmt Ccy="EUR">5.00</InstdAmt>
+				<DrctDbtTx>
+					<MndtRltdInf>
+						<MndtId>151048155320230109</MndtId>
+						<DtOfSgntr>2023-01-09</DtOfSgntr>
+						<AmdmntInd>false</AmdmntInd>
+					</MndtRltdInf>
+					<CdtrSchmeId>
+						<Id>
+							<PrvtId>
+								<Othr>
+									<Id>NL28ZZZ141105780000</Id>
+									<SchmeNm>
+										<Prtry>SEPA</Prtry>
+									</SchmeNm>
+								</Othr>
+							</PrvtId>
+						</Id>
+					</CdtrSchmeId>
+				</DrctDbtTx>
+				<DbtrAgt>
+					<FinInstnId>
+						<BICFI>SCFBDE33XXX</BICFI>
+					</FinInstnId>
+				</DbtrAgt>
+				<Dbtr>
+					<Nm>Haucke</Nm>
+				</Dbtr>
+				<DbtrAcct>
+					<Id>
+						<IBAN>DE53310108339910145329</IBAN>
+					</Id>
+				</DbtrAcct>
+				<RmtInf>
+					<Ustrd>2063618728           5,00Ihre Online-Apotheke sagt Danke</Ustrd>
+				</RmtInf>
+			</DrctDbtTxInf>
+		</PmtInf>
+	</CstmrDrctDbtInitn>
+</Document>

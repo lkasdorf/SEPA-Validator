@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09 pain.001.001.09.xsd">
+	<CstmrCdtTrfInitn>
+		<GrpHdr>
+			<MsgId>1001216011</MsgId>
+			<CreDtTm>2025-07-30T12:22:19</CreDtTm>
+			<NbOfTxs>1</NbOfTxs>
+			<CtrlSum>2181.33</CtrlSum>
+			<InitgPty>
+				<Nm>APOTHEEK DOCMORRIS N.V. VOSKUILENWEG 131B</Nm>
+			</InitgPty>
+		</GrpHdr>
+		<PmtInf>
+			<PmtInfId>1001216112</PmtInfId>
+			<PmtMtd>TRF</PmtMtd>
+			<BtchBookg>true</BtchBookg>
+			<NbOfTxs>1</NbOfTxs>
+			<CtrlSum>2181.33</CtrlSum>
+			<PmtTpInf>
+				<InstrPrty>NORM</InstrPrty>
+				<SvcLvl>
+					<Cd>SEPA</Cd>
+				</SvcLvl>
+			</PmtTpInf>
+			<ReqdExctnDt>
+				<Dt>2025-07-30</Dt>
+			</ReqdExctnDt>
+			<Dbtr>
+				<Nm>Apotheek DocMorris N.V. Voskuilenweg 131b</Nm>
+				<PstlAdr>
+					<StrtNm>Avantisallee</StrtNm>
+					<BldgNb>152</BldgNb>
+					<PstCd>6422 RA</PstCd>
+					<TwnNm>Heerlen</TwnNm>
+					<Ctry>NL</Ctry>
+				</PstlAdr>
+			</Dbtr>
+			<DbtrAcct>
+				<Id>
+					<IBAN>NL82DEUT0265125715</IBAN>
+				</Id>
+				<Ccy>EUR</Ccy>
+			</DbtrAcct>
+			<DbtrAgt>
+				<FinInstnId>
+					<BICFI>DEUTNL2AXXX</BICFI>
+				</FinInstnId>
+			</DbtrAgt>
+			<ChrgBr>SLEV</ChrgBr>
+			<CdtTrfTxInf>
+				<PmtId>
+					<InstrId>01-910100890000172025</InstrId>
+					<EndToEndId>0089000017</EndToEndId>
+				</PmtId>
+				<Amt>
+					<InstdAmt Ccy="EUR">2181.33</InstdAmt>
+				</Amt>
+				<CdtrAgt>
+					<FinInstnId>
+						<BICFI>RABONL2U</BICFI>
+					</FinInstnId>
+				</CdtrAgt>
+				<Cdtr>
+					<Nm>Overwijk Koffiesystemen B.V</Nm>
+					<PstlAdr>
+						<StrtNm>Veilingweg</StrtNm>
+						<BldgNb>57-59</BldgNb>
+						<PstCd>3981 PB</PstCd>
+						<TwnNm>Bunnik</TwnNm>
+						<Ctry>NL</Ctry>
+					</PstlAdr>
+				</Cdtr>
+				<CdtrAcct>
+					<Id>
+						<IBAN>NL56RABO0128317825</IBAN>
+					</Id>
+				</CdtrAcct>
+				<RmtInf>
+					<Ustrd>Rekening  biNr.2023000065/1.1.2023</Ustrd>
+				</RmtInf>
+			</CdtTrfTxInf>
+		</PmtInf>
+	</CstmrCdtTrfInitn>
+</Document>

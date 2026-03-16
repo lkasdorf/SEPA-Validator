@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09 pain.001.001.09.xsd">
+	<CstmrCdtTrfInitn>
+		<GrpHdr>
+			<MsgId>0000003912</MsgId>
+			<CreDtTm>2025-01-23T17:56:43</CreDtTm>
+			<NbOfTxs>1</NbOfTxs>
+			<CtrlSum>1293.00</CtrlSum>
+			<InitgPty>
+				<Nm>ENRW ENERGIEVERSORGUNG ROTTWEI  GMBH  CO. KG (NETZ</Nm>
+			</InitgPty>
+		</GrpHdr>
+		<PmtInf>
+			<PmtInfId>0000003912-000001</PmtInfId>
+			<PmtMtd>TRF</PmtMtd>
+			<NbOfTxs>1</NbOfTxs>
+			<CtrlSum>1293.00</CtrlSum>
+			<PmtTpInf>
+				<SvcLvl>
+					<Cd>SEPA</Cd>
+				</SvcLvl>
+			</PmtTpInf>
+			<ReqdExctnDt>
+				<Dt>2025-01-23</Dt>
+			</ReqdExctnDt>
+			<Dbtr>
+				<Nm>ENRW Energieversorgung Rottwei  GmbH  Co. KG (Netz</Nm>
+				<PstlAdr>
+					<StrtNm>Stuttgarter Strasse</StrtNm>
+					<BldgNb>80-82</BldgNb>
+					<PstCd>78628</PstCd>
+					<TwnNm>Rottweil</TwnNm>
+					<CtrySubDvsn>08</CtrySubDvsn>
+					<Ctry>DE</Ctry>
+				</PstlAdr>
+			</Dbtr>
+			<DbtrAcct>
+				<Id>
+					<IBAN>DE86642500400000861452</IBAN>
+				</Id>
+				<Ccy>EUR</Ccy>
+			</DbtrAcct>
+			<DbtrAgt>
+				<FinInstnId>
+					<BICFI>SOLADES1RWL</BICFI>
+				</FinInstnId>
+			</DbtrAgt>
+			<ChrgBr>SLEV</ChrgBr>
+			<CdtTrfTxInf>
+				<PmtId>
+					<InstrId>02-011200061964</InstrId>
+					<EndToEndId>NOTPROVIDED</EndToEndId>
+				</PmtId>
+				<Amt>
+					<InstdAmt Ccy="EUR">1293.00</InstdAmt>
+				</Amt>
+				<CdtrAgt>
+					<FinInstnId>
+						<BICFI>DRESDEFF510</BICFI>
+					</FinInstnId>
+				</CdtrAgt>
+				<Cdtr>
+					<Nm>Andreas Jehle</Nm>
+					<PstlAdr>
+						<StrtNm>Pasteurstrasse</StrtNm>
+						<BldgNb>43</BldgNb>
+						<PstCd>80997</PstCd>
+						<TwnNm>Muenchen</TwnNm>
+						<CtrySubDvsn>09</CtrySubDvsn>
+						<Ctry>DE</Ctry>
+					</PstlAdr>
+				</Cdtr>
+				<CdtrAcct>
+					<Id>
+						<IBAN>DE79510800600010459000</IBAN>
+					</Id>
+				</CdtrAcct>
+				<RmtInf>
+					<Ustrd>B11200061964 Vertragskonto 2200000100</Ustrd>
+				</RmtInf>
+			</CdtTrfTxInf>
+		</PmtInf>
+	</CstmrCdtTrfInitn>
+</Document>

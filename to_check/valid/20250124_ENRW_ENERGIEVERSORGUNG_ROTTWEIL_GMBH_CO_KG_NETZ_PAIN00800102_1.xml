@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.008.001.02" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:iso:std:iso:20022:tech:xsd:pain.008.001.02 pain.008.001.02.xsd">
+	<CstmrDrctDbtInitn>
+		<GrpHdr>
+			<MsgId>0000004711</MsgId>
+			<CreDtTm>2025-01-23T18:25:23</CreDtTm>
+			<NbOfTxs>2</NbOfTxs>
+			<CtrlSum>1179.00</CtrlSum>
+			<InitgPty>
+				<Nm>ENRW ENERGIEVERSORGUNG ROTTWEIL GMBH  CO. KG (NETZ)</Nm>
+			</InitgPty>
+		</GrpHdr>
+		<PmtInf>
+			<PmtInfId>0000004711-000001</PmtInfId>
+			<PmtMtd>DD</PmtMtd>
+			<NbOfTxs>2</NbOfTxs>
+			<CtrlSum>1179.00</CtrlSum>
+			<PmtTpInf>
+				<SvcLvl>
+					<Cd>SEPA</Cd>
+				</SvcLvl>
+				<LclInstrm>
+					<Cd>CORE</Cd>
+				</LclInstrm>
+				<SeqTp>RCUR</SeqTp>
+			</PmtTpInf>
+			<ReqdColltnDt>2025-01-24</ReqdColltnDt>
+			<Cdtr>
+				<Nm>ENRW Energieversorgung Rottweil GmbH  Co. KG (Netz)</Nm>
+				<PstlAdr>
+					<Ctry>DE</Ctry>
+					<AdrLine>Stuttgarter Strasse 80-82</AdrLine>
+					<AdrLine>Rottweil</AdrLine>
+				</PstlAdr>
+			</Cdtr>
+			<CdtrAcct>
+				<Id>
+					<IBAN>DE46642500400000103244</IBAN>
+				</Id>
+				<Ccy>EUR</Ccy>
+			</CdtrAcct>
+			<CdtrAgt>
+				<FinInstnId>
+					<BIC>SOLADES1RWL</BIC>
+				</FinInstnId>
+			</CdtrAgt>
+			<ChrgBr>SLEV</ChrgBr>
+			<DrctDbtTxInf>
+				<PmtId>
+					<InstrId>02-007100824802</InstrId>
+					<EndToEndId>NOTPROVIDED</EndToEndId>
+				</PmtId>
+				<InstdAmt Ccy="EUR">1134.00</InstdAmt>
+				<DrctDbtTx>
+					<MndtRltdInf>
+						<MndtId>V618AA000025767</MndtId>
+						<DtOfSgntr>2013-12-03</DtOfSgntr>
+						<AmdmntInd>false</AmdmntInd>
+					</MndtRltdInf>
+					<CdtrSchmeId>
+						<Id>
+							<PrvtId>
+								<Othr>
+									<Id>DE24ZZZ00000087613</Id>
+									<SchmeNm>
+										<Prtry>SEPA</Prtry>
+									</SchmeNm>
+								</Othr>
+							</PrvtId>
+						</Id>
+					</CdtrSchmeId>
+				</DrctDbtTx>
+				<DbtrAgt>
+					<FinInstnId>
+						<BIC>PBNKDEFFXXX</BIC>
+					</FinInstnId>
+				</DbtrAgt>
+				<Dbtr>
+					<Nm>Gabriele Ulrich</Nm>
+					<PstlAdr>
+						<Ctry>DE</Ctry>
+						<AdrLine>Titiseestrasse, 47</AdrLine>
+						<AdrLine>78628 Rottweil</AdrLine>
+					</PstlAdr>
+				</Dbtr>
+				<DbtrAcct>
+					<Id>
+						<IBAN>DE41360100430314239434</IBAN>
+					</Id>
+				</DbtrAcct>
+				<Purp>
+					<Cd>OTHR</Cd>
+				</Purp>
+				<RmtInf>
+					<Ustrd>B07100824802Vertragskonto 2000008532</Ustrd>
+				</RmtInf>
+			</DrctDbtTxInf>
+			<DrctDbtTxInf>
+				<PmtId>
+					<InstrId>02-007100824803</InstrId>
+					<EndToEndId>NOTPROVIDED</EndToEndId>
+				</PmtId>
+				<InstdAmt Ccy="EUR">45.00</InstdAmt>
+				<DrctDbtTx>
+					<MndtRltdInf>
+						<MndtId>V618AA000036640</MndtId>
+						<DtOfSgntr>2017-10-13</DtOfSgntr>
+						<AmdmntInd>false</AmdmntInd>
+					</MndtRltdInf>
+					<CdtrSchmeId>
+						<Id>
+							<PrvtId>
+								<Othr>
+									<Id>DE24ZZZ00000087613</Id>
+									<SchmeNm>
+										<Prtry>SEPA</Prtry>
+									</SchmeNm>
+								</Othr>
+							</PrvtId>
+						</Id>
+					</CdtrSchmeId>
+				</DrctDbtTx>
+				<DbtrAgt>
+					<FinInstnId>
+						<BIC>PBNKDEFFXXX</BIC>
+					</FinInstnId>
+				</DbtrAgt>
+				<Dbtr>
+					<Nm>Gabriele Ulrich</Nm>
+					<PstlAdr>
+						<Ctry>DE</Ctry>
+						<AdrLine>Titiseestrasse, 47</AdrLine>
+						<AdrLine>78628 Rottweil</AdrLine>
+					</PstlAdr>
+				</Dbtr>
+				<DbtrAcct>
+					<Id>
+						<IBAN>DE41360100430314239434</IBAN>
+					</Id>
+				</DbtrAcct>
+				<Purp>
+					<Cd>OTHR</Cd>
+				</Purp>
+				<RmtInf>
+					<Ustrd>B07100824803Vertragskonto 2000077815</Ustrd>
+				</RmtInf>
+			</DrctDbtTxInf>
+		</PmtInf>
+	</CstmrDrctDbtInitn>
+</Document>
