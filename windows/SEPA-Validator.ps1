@@ -561,16 +561,40 @@ $btnOrdner.add_Click({
 $btnExport.add_Click({
     $dlg = New-Object System.Windows.Forms.SaveFileDialog
     $dlg.Title = 'Validierungsergebnis exportieren'
-    $dlg.Filter = 'CSV-Datei (*.csv)|*.csv|Textdatei (*.txt)|*.txt'
+    $dlg.Filter = 'Textdatei (*.txt)|*.txt|Alle Dateien (*.*)|*.*'
     $dlg.FileName = "SEPA_Validierung_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
     if ($dlg.ShowDialog() -eq 'OK') {
-        $lines = [System.Collections.Generic.List[string]]::new()
-        $lines.Add('Datei;Namespace;Schema;Status;Fehler/Warnungen')
+        $sb = New-Object System.Text.StringBuilder
+        $total = $script:Results.Count
+        $okCount = @($script:Results | Where-Object { $_.Status -eq 'OK' }).Count
+        $failCount = $total - $okCount
+
+        [void]$sb.AppendLine("SEPA XML Validierung - $(Get-Date -Format 'dd.MM.yyyy HH:mm:ss')")
+        [void]$sb.AppendLine("$total Dateien geprueft | OK: $okCount | Fehlerhaft: $failCount")
+        [void]$sb.AppendLine(('=' * 80))
+
         foreach ($r in $script:Results) {
-            $msgs = ($r.Meldungen | ForEach-Object { "$($_.Typ): $($_.Text)" }) -join ' | '
-            $lines.Add("$($r.Datei);$($r.Namespace);$($r.Schema);$($r.Status);$msgs")
+            [void]$sb.AppendLine('')
+            [void]$sb.AppendLine("Datei: $($r.Pfad)")
+            [void]$sb.AppendLine("Namespace: $($r.Namespace)")
+            [void]$sb.AppendLine("Schema: $($r.Schema)")
+            [void]$sb.AppendLine("Status: $($r.Status)")
+
+            if ($r.Meldungen.Count -gt 0) {
+                [void]$sb.AppendLine('')
+                $nr = 1
+                foreach ($m in $r.Meldungen) {
+                    $label = if ($m.Typ -eq 'Fehler') { 'FEHLER' } else { 'WARNUNG' }
+                    [void]$sb.AppendLine("[$nr] ${label}: $($m.Text)")
+                    [void]$sb.AppendLine('')
+                    $nr++
+                }
+            }
+
+            [void]$sb.AppendLine(('-' * 80))
         }
-        [System.IO.File]::WriteAllLines($dlg.FileName, $lines, [System.Text.Encoding]::UTF8)
+
+        [System.IO.File]::WriteAllText($dlg.FileName, $sb.ToString(), [System.Text.Encoding]::UTF8)
         Update-StatusBar "Export gespeichert: $($dlg.FileName)"
     }
 })
