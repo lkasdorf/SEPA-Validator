@@ -261,6 +261,14 @@ $btnExport.Cursor = [System.Windows.Forms.Cursors]::Hand
 $btnExport.Enabled = $false
 $toolPanel.Controls.Add($btnExport)
 
+$dragHint = New-Object System.Windows.Forms.Label
+$dragHint.Text = 'or drag && drop files here'
+$dragHint.AutoSize = $true
+$dragHint.Location = New-Object System.Drawing.Point(414, 11)
+$dragHint.ForeColor = [System.Drawing.Color]::FromArgb(140, 140, 140)
+$dragHint.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
+$toolPanel.Controls.Add($dragHint)
+
 $form.Controls.Add($toolPanel)
 
 # --- Fortschrittsanzeige ---
@@ -282,8 +290,8 @@ $progressPanel.Controls.Add($progressBar)
 $splitContainer = New-Object System.Windows.Forms.SplitContainer
 $splitContainer.Dock = 'Fill'
 $splitContainer.Orientation = 'Horizontal'
-$splitContainer.SplitterDistance = 160
-$splitContainer.SplitterWidth = 6
+$splitContainer.SplitterDistance = 120
+$splitContainer.SplitterWidth = 4
 $splitContainer.BackColor = [System.Drawing.Color]::FromArgb(220, 220, 220)
 
 # Datei-Grid
