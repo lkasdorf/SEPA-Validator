@@ -5,8 +5,7 @@
 .DESCRIPTION
     Validiert SEPA-XML-Dateien gegen ISO 20022 XSD-Schemas.
     Unterstuetzt Drag & Drop, Dateiauswahl und Ordner-Validierung.
-.NOTES
-    Voraussetzung: XSD-Schemas im Unterordner "schemas\" neben diesem Script.
+    Schemas koennen eingebettet (EXE-Build) oder im Unterordner "schemas\" liegen.
 #>
 
 try {
@@ -19,10 +18,7 @@ $ErrorActionPreference = 'Stop'
 
 # --- Schema-Konfiguration ---
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$SchemaDir = Join-Path $ScriptDir 'schemas'
-
-# Namespace -> XSD-Datei (Reihenfolge: spezifischere GBIC-Varianten zuerst)
+# Namespace -> XSD-Datei
 $SchemaMap = [ordered]@{
     'urn:iso:std:iso:20022:tech:xsd:pain.001.001.03' = 'pain.001.001.03.xsd'
     'urn:iso:std:iso:20022:tech:xsd:pain.001.001.09' = 'pain.001.001.09.xsd'
@@ -32,6 +28,29 @@ $SchemaMap = [ordered]@{
     'urn:iso:std:iso:20022:tech:xsd:pain.008.001.08' = 'pain.008.001.08.xsd'
     'urn:iso:std:iso:20022:tech:xsd:camt.054.001.08' = 'camt.054.001.08.xsd'
     'urn:conxml:xsd:container.nnn.001.GBIC4'         = 'container.nnn.001.GBIC4.xsd'
+}
+
+# Eingebettete Schemas (wird vom Build-Script befuellt)
+# @@EMBEDDED_SCHEMAS@@
+
+# Schema-Verzeichnis bestimmen: eingebettet -> Temp, sonst -> schemas/ neben Script
+if ($EmbeddedSchemas) {
+    $SchemaDir = Join-Path ([System.IO.Path]::GetTempPath()) 'SEPA-Validator-Schemas'
+    if (-not (Test-Path $SchemaDir)) { [void](New-Item -ItemType Directory -Path $SchemaDir) }
+    foreach ($entry in $EmbeddedSchemas.GetEnumerator()) {
+        $targetPath = Join-Path $SchemaDir $entry.Key
+        if (-not (Test-Path $targetPath)) {
+            $bytes = [System.Convert]::FromBase64String($entry.Value)
+            $ms = New-Object System.IO.MemoryStream(,$bytes)
+            $gs = New-Object System.IO.Compression.GZipStream($ms, [System.IO.Compression.CompressionMode]::Decompress)
+            $sr = New-Object System.IO.StreamReader($gs, [System.Text.Encoding]::UTF8)
+            [System.IO.File]::WriteAllText($targetPath, $sr.ReadToEnd(), [System.Text.Encoding]::UTF8)
+            $sr.Close(); $gs.Close(); $ms.Close()
+        }
+    }
+} else {
+    $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+    $SchemaDir = Join-Path $ScriptDir 'schemas'
 }
 
 # Vorkompilierter Schema-Cache (wird einmal pro Namespace geladen)
