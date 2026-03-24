@@ -76,6 +76,7 @@ This tool requires XSD schema files for validation. Schemas are **not included**
 |--------|---------|-----|
 | ISO 20022 | pain.001, pain.002, pain.008, camt.054, ... | [iso20022.org/catalogue-of-iso-20022-messages](https://www.iso20022.org/catalogue-of-iso-20022-messages) |
 | Deutsche Kreditwirtschaft (DK) | GBIC variants for German SEPA | [die-dk.de/themen/zahlungsverkehr](https://die-dk.de/themen/zahlungsverkehr/) |
+| EBICS (Germany) | German SEPA data formats & schemas | [ebics.de/de/datenformate](https://www.ebics.de/de/datenformate) |
 | EPC (European Payments Council) | EPC SEPA scheme rulebooks | [europeanpaymentscouncil.eu](https://www.europeanpaymentscouncil.eu/document-library) |
 
 Place the downloaded `.xsd` files in `xml_schema/` (for EXE builds) or `windows/schemas/` (for script mode).
