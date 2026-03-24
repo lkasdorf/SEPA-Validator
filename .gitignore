@@ -1,0 +1,20 @@
+# Private data - XML payment files and analysis reports
+to_check/
+analysis/
+Reference/
+
+# XSD schemas (not redistributable)
+xml_schema/
+
+# Build output
+windows/dist/
+windows/schemas/
+
+# Windows metadata
+*:Zone.Identifier
+Thumbs.db
+Desktop.ini
+
+# Internal project config and scripts
+AGENTS.md
+scripts/
