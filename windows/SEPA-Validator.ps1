@@ -200,15 +200,15 @@ $iconBase64 = $null  # Platzhalter fuer optionales Icon
 # --- Header-Panel ---
 $headerPanel = New-Object System.Windows.Forms.Panel
 $headerPanel.Dock = 'Top'
-$headerPanel.Height = 56
+$headerPanel.Height = 44
 $headerPanel.BackColor = [System.Drawing.Color]::FromArgb(0, 90, 158)
 
 $titleLabel = New-Object System.Windows.Forms.Label
 $titleLabel.Text = 'SEPA XML Validator'
 $titleLabel.ForeColor = [System.Drawing.Color]::White
-$titleLabel.Font = New-Object System.Drawing.Font('Segoe UI', 16, [System.Drawing.FontStyle]::Bold)
+$titleLabel.Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold)
 $titleLabel.AutoSize = $true
-$titleLabel.Location = New-Object System.Drawing.Point(16, 12)
+$titleLabel.Location = New-Object System.Drawing.Point(12, 10)
 $headerPanel.Controls.Add($titleLabel)
 
 $versionLabel = New-Object System.Windows.Forms.Label
@@ -216,7 +216,7 @@ $versionLabel.Text = 'v1.0.0'
 $versionLabel.ForeColor = [System.Drawing.Color]::FromArgb(180, 210, 240)
 $versionLabel.Font = New-Object System.Drawing.Font('Segoe UI', 9)
 $versionLabel.AutoSize = $true
-$versionLabel.Location = New-Object System.Drawing.Point(250, 22)
+$versionLabel.Location = New-Object System.Drawing.Point(220, 16)
 $headerPanel.Controls.Add($versionLabel)
 
 $form.Controls.Add($headerPanel)
@@ -224,13 +224,13 @@ $form.Controls.Add($headerPanel)
 # --- Toolbar ---
 $toolPanel = New-Object System.Windows.Forms.Panel
 $toolPanel.Dock = 'Top'
-$toolPanel.Height = 48
-$toolPanel.Padding = New-Object System.Windows.Forms.Padding(12, 8, 12, 8)
+$toolPanel.Height = 40
+$toolPanel.Padding = New-Object System.Windows.Forms.Padding(12, 4, 12, 4)
 
 $btnDatei = New-Object System.Windows.Forms.Button
 $btnDatei.Text = 'Select Files...'
-$btnDatei.Size = New-Object System.Drawing.Size(120, 32)
-$btnDatei.Location = New-Object System.Drawing.Point(12, 8)
+$btnDatei.Size = New-Object System.Drawing.Size(120, 30)
+$btnDatei.Location = New-Object System.Drawing.Point(12, 5)
 $btnDatei.FlatStyle = 'Flat'
 $btnDatei.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 212)
 $btnDatei.ForeColor = [System.Drawing.Color]::White
@@ -240,8 +240,8 @@ $toolPanel.Controls.Add($btnDatei)
 
 $btnOrdner = New-Object System.Windows.Forms.Button
 $btnOrdner.Text = 'Select Folder...'
-$btnOrdner.Size = New-Object System.Drawing.Size(120, 32)
-$btnOrdner.Location = New-Object System.Drawing.Point(142, 8)
+$btnOrdner.Size = New-Object System.Drawing.Size(120, 30)
+$btnOrdner.Location = New-Object System.Drawing.Point(142, 5)
 $btnOrdner.FlatStyle = 'Flat'
 $btnOrdner.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 212)
 $btnOrdner.ForeColor = [System.Drawing.Color]::White
@@ -251,8 +251,8 @@ $toolPanel.Controls.Add($btnOrdner)
 
 $btnExport = New-Object System.Windows.Forms.Button
 $btnExport.Text = 'Export Results...'
-$btnExport.Size = New-Object System.Drawing.Size(130, 32)
-$btnExport.Location = New-Object System.Drawing.Point(272, 8)
+$btnExport.Size = New-Object System.Drawing.Size(130, 30)
+$btnExport.Location = New-Object System.Drawing.Point(272, 5)
 $btnExport.FlatStyle = 'Flat'
 $btnExport.BackColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
 $btnExport.ForeColor = [System.Drawing.Color]::White
@@ -266,8 +266,8 @@ $form.Controls.Add($toolPanel)
 # --- Drop-Zone ---
 $dropPanel = New-Object System.Windows.Forms.Panel
 $dropPanel.Dock = 'Top'
-$dropPanel.Height = 64
-$dropPanel.Padding = New-Object System.Windows.Forms.Padding(12, 0, 12, 8)
+$dropPanel.Height = 40
+$dropPanel.Padding = New-Object System.Windows.Forms.Padding(12, 0, 12, 4)
 
 $dropLabel = New-Object System.Windows.Forms.Label
 $dropLabel.Text = 'Drop XML files here or use the buttons above'
@@ -300,7 +300,7 @@ $progressPanel.Controls.Add($progressBar)
 $splitContainer = New-Object System.Windows.Forms.SplitContainer
 $splitContainer.Dock = 'Fill'
 $splitContainer.Orientation = 'Horizontal'
-$splitContainer.SplitterDistance = 220
+$splitContainer.SplitterDistance = 160
 $splitContainer.SplitterWidth = 6
 $splitContainer.BackColor = [System.Drawing.Color]::FromArgb(220, 220, 220)
 
