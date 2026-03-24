@@ -317,19 +317,7 @@ $grid.Columns['Schema'].FillWeight = 20
 $grid.Columns['Status'].FillWeight = 20
 $grid.AllowDrop = $true
 
-# Drop hint overlay on the grid
-$dropLabel = New-Object System.Windows.Forms.Label
-$dropLabel.Text = "Drop XML files here`nor use the buttons above"
-$dropLabel.Dock = 'Fill'
-$dropLabel.TextAlign = 'MiddleCenter'
-$dropLabel.Font = New-Object System.Drawing.Font('Segoe UI', 10)
-$dropLabel.ForeColor = [System.Drawing.Color]::FromArgb(160, 160, 160)
-$dropLabel.BackColor = [System.Drawing.Color]::White
-$dropLabel.AllowDrop = $true
-
-$splitContainer.Panel1.Controls.Add($dropLabel)
 $splitContainer.Panel1.Controls.Add($grid)
-$dropLabel.BringToFront()
 
 # Detail-Ansicht
 $detailBox = New-Object System.Windows.Forms.RichTextBox
@@ -476,7 +464,6 @@ function Start-Validation {
         return
     }
 
-    $dropLabel.Visible = $false
     $grid.Rows.Clear()
     $script:Results.Clear()
     $detailBox.Clear()
@@ -565,7 +552,7 @@ $script:HandleDragDrop = {
 }
 
 # Drag & Drop auf alle relevanten Controls
-foreach ($ctrl in @($form, $dropLabel, $grid)) {
+foreach ($ctrl in @($form, $grid)) {
     $ctrl.add_DragEnter($script:HandleDragEnter)
     $ctrl.add_DragLeave($script:HandleDragLeave)
     $ctrl.add_DragDrop($script:HandleDragDrop)
