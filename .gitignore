@@ -15,6 +15,5 @@ windows/schemas/
 Thumbs.db
 Desktop.ini
 
-# Internal project config and scripts
+# Internal project config
 AGENTS.md
-scripts/

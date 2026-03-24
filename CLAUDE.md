@@ -19,13 +19,16 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 # Output: windows/dist/SEPA-Validator.exe
 ```
 
-### Bash validation scripts (Linux/WSL)
+### CLI validation (Linux/macOS/WSL)
 ```bash
-./scripts/validate_all.sh to_check analysis              # Validate all XMLs, write CSV report
+./scripts/validate.sh file.xml                           # Validate single file
+./scripts/validate.sh path/to/folder/                    # Validate all XMLs in folder
+./scripts/validate.sh --csv report.csv *.xml             # Export results to CSV
+./scripts/validate_all.sh to_check analysis              # Batch validate, write CSV report
 ./scripts/rename_xml_by_date_company_format.sh to_check analysis  # Rename by date/company
 ```
 
-Prerequisites: `bash`, `xmllint`, `rg` (ripgrep).
+Prerequisites: `bash`, `xmllint` (for validate.sh), `rg` (ripgrep, for validate_all.sh).
 
 ## Architecture
 
@@ -55,7 +58,7 @@ Reads XSD files from `xml_schema/`, GZip-compresses and Base64-encodes them, inj
 - `xml_schema/` — XSD schemas (not redistributable, download from iso20022.org or ebics.de)
 - `to_check/` — XML files sorted into `inbox/`, `valid/`, `invalid/`, `duplicates/`, `archive/`
 - `analysis/` — Generated CSV/Markdown validation reports
-- `scripts/` — Bash scripts for validation and renaming (internal use)
+- `scripts/` — Bash CLI scripts for validation and renaming (tracked in git)
 
 ## Conventions
 
