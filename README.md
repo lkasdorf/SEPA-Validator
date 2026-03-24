@@ -43,7 +43,7 @@ A native Windows GUI tool for validating SEPA XML payment files against ISO 2002
 
 ```powershell
 cd windows
-.\build.ps1
+powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
 4. Find `SEPA-Validator.exe` in `windows/dist/` — all schemas are embedded, no extra files needed
