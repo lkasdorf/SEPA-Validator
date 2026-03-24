@@ -219,8 +219,6 @@ $versionLabel.AutoSize = $true
 $versionLabel.Location = New-Object System.Drawing.Point(220, 16)
 $headerPanel.Controls.Add($versionLabel)
 
-$form.Controls.Add($headerPanel)
-
 # --- Toolbar ---
 $toolPanel = New-Object System.Windows.Forms.Panel
 $toolPanel.Dock = 'Top'
@@ -269,8 +267,6 @@ $dragHint.ForeColor = [System.Drawing.Color]::FromArgb(140, 140, 140)
 $dragHint.Font = New-Object System.Drawing.Font('Segoe UI', 8.5)
 $toolPanel.Controls.Add($dragHint)
 
-$form.Controls.Add($toolPanel)
-
 # --- Fortschrittsanzeige ---
 $progressPanel = New-Object System.Windows.Forms.Panel
 $progressPanel.Dock = 'Top'
@@ -283,7 +279,6 @@ $progressBar.Dock = 'Fill'
 $progressBar.Style = 'Continuous'
 $progressBar.Minimum = 0
 $progressBar.Maximum = 100
-$form.Controls.Add($progressPanel)
 $progressPanel.Controls.Add($progressBar)
 
 # --- Dateiliste (obere Haelfte) ---
@@ -338,7 +333,6 @@ $detailBox.BorderStyle = 'None'
 $detailBox.Text = 'Select a file above to view validation details.'
 
 $splitContainer.Panel2.Controls.Add($detailBox)
-$form.Controls.Add($splitContainer)
 
 # --- Statusleiste ---
 $statusStrip = New-Object System.Windows.Forms.StatusStrip
@@ -379,7 +373,13 @@ $versionStatus.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
 [void]$statusStrip.Items.Add($sepA3)
 [void]$statusStrip.Items.Add($versionStatus)
 
-$form.Controls.Add($statusStrip)
+# --- Controls in korrekter Dock-Reihenfolge hinzufuegen ---
+# WinForms: zuletzt hinzugefuegt = dockt zuerst
+$form.Controls.Add($statusStrip)       # Bottom
+$form.Controls.Add($splitContainer)    # Fill (remaining space)
+$form.Controls.Add($progressPanel)     # Top (below toolbar)
+$form.Controls.Add($toolPanel)         # Top (below header)
+$form.Controls.Add($headerPanel)       # Top (very top)
 
 # --- Daten-Speicher ---
 $script:Results = [System.Collections.Generic.List[PSCustomObject]]::new()
