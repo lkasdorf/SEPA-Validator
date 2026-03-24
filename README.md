@@ -68,6 +68,18 @@ $SchemaMap = [ordered]@{
 
 3. Rebuild the EXE if using the standalone version
 
+## Obtaining XSD Schemas
+
+This tool requires XSD schema files for validation. Schemas are **not included** in this repository — download them from the official sources:
+
+| Source | Schemas | URL |
+|--------|---------|-----|
+| ISO 20022 | pain.001, pain.002, pain.008, camt.054, ... | [iso20022.org/catalogue-of-iso-20022-messages](https://www.iso20022.org/catalogue-of-iso-20022-messages) |
+| Deutsche Kreditwirtschaft (DK) | GBIC variants for German SEPA | [die-dk.de/themen/zahlungsverkehr](https://die-dk.de/themen/zahlungsverkehr/) |
+| EPC (European Payments Council) | EPC SEPA scheme rulebooks | [europeanpaymentscouncil.eu](https://www.europeanpaymentscouncil.eu/document-library) |
+
+Place the downloaded `.xsd` files in `xml_schema/` (for EXE builds) or `windows/schemas/` (for script mode).
+
 ## Requirements
 
 - Windows 10 or 11
@@ -82,7 +94,7 @@ windows/
   SEPA-Validator.cmd    # Launcher (double-click)
   build.ps1             # EXE build script
   setup.cmd             # Schema copy helper
-xml_schema/             # XSD schema files (not included - add your own)
+xml_schema/             # XSD schema files (not included - download from sources above)
 ```
 
 ## License
