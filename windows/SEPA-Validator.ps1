@@ -263,24 +263,6 @@ $toolPanel.Controls.Add($btnExport)
 
 $form.Controls.Add($toolPanel)
 
-# --- Drop-Zone ---
-$dropPanel = New-Object System.Windows.Forms.Panel
-$dropPanel.Dock = 'Top'
-$dropPanel.Height = 40
-$dropPanel.Padding = New-Object System.Windows.Forms.Padding(12, 0, 12, 4)
-
-$dropLabel = New-Object System.Windows.Forms.Label
-$dropLabel.Text = 'Drop XML files here or use the buttons above'
-$dropLabel.Dock = 'Fill'
-$dropLabel.TextAlign = 'MiddleCenter'
-$dropLabel.Font = New-Object System.Drawing.Font('Segoe UI', 10)
-$dropLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
-$dropLabel.BackColor = [System.Drawing.Color]::White
-$dropLabel.BorderStyle = 'FixedSingle'
-$dropLabel.AllowDrop = $true
-$dropPanel.Controls.Add($dropLabel)
-$form.Controls.Add($dropPanel)
-
 # --- Fortschrittsanzeige ---
 $progressPanel = New-Object System.Windows.Forms.Panel
 $progressPanel.Dock = 'Top'
@@ -335,7 +317,19 @@ $grid.Columns['Schema'].FillWeight = 20
 $grid.Columns['Status'].FillWeight = 20
 $grid.AllowDrop = $true
 
+# Drop hint overlay on the grid
+$dropLabel = New-Object System.Windows.Forms.Label
+$dropLabel.Text = "Drop XML files here`nor use the buttons above"
+$dropLabel.Dock = 'Fill'
+$dropLabel.TextAlign = 'MiddleCenter'
+$dropLabel.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+$dropLabel.ForeColor = [System.Drawing.Color]::FromArgb(160, 160, 160)
+$dropLabel.BackColor = [System.Drawing.Color]::White
+$dropLabel.AllowDrop = $true
+
+$splitContainer.Panel1.Controls.Add($dropLabel)
 $splitContainer.Panel1.Controls.Add($grid)
+$dropLabel.BringToFront()
 
 # Detail-Ansicht
 $detailBox = New-Object System.Windows.Forms.RichTextBox
@@ -482,6 +476,7 @@ function Start-Validation {
         return
     }
 
+    $dropLabel.Visible = $false
     $grid.Rows.Clear()
     $script:Results.Clear()
     $detailBox.Clear()
@@ -548,20 +543,13 @@ $grid.add_SelectionChanged({
 $script:HandleDragEnter = {
     if ($_.Data.GetDataPresent([System.Windows.Forms.DataFormats]::FileDrop)) {
         $_.Effect = [System.Windows.Forms.DragDropEffects]::Copy
-        $dropLabel.BackColor = [System.Drawing.Color]::FromArgb(230, 243, 255)
-        $dropLabel.Text = 'Release to validate...'
     }
 }
 
 $script:HandleDragLeave = {
-    $dropLabel.BackColor = [System.Drawing.Color]::White
-    $dropLabel.Text = 'Drop XML files here or use the buttons above'
 }
 
 $script:HandleDragDrop = {
-    $dropLabel.BackColor = [System.Drawing.Color]::White
-    $dropLabel.Text = 'Drop XML files here or use the buttons above'
-
     $dropped = $_.Data.GetData([System.Windows.Forms.DataFormats]::FileDrop)
     $allFiles = [System.Collections.Generic.List[string]]::new()
 
