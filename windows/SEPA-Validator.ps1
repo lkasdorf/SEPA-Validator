@@ -3,9 +3,9 @@
 .SYNOPSIS
     SEPA XML Validator - Windows GUI Tool
 .DESCRIPTION
-    Validiert SEPA-XML-Dateien gegen ISO 20022 XSD-Schemas.
-    Unterstuetzt Drag & Drop, Dateiauswahl und Ordner-Validierung.
-    Schemas koennen eingebettet (EXE-Build) oder im Unterordner "schemas\" liegen.
+    Validates SEPA XML files against ISO 20022 XSD schemas.
+    Supports drag & drop, file/folder selection, and batch validation.
+    Schemas can be embedded (EXE build) or loaded from a "schemas\" subfolder.
 #>
 
 try {
@@ -83,42 +83,38 @@ function Test-SepaXml {
     param([string]$FilePath)
 
     $result = [PSCustomObject]@{
-        Datei     = [System.IO.Path]::GetFileName($FilePath)
-        Pfad      = $FilePath
+        File      = [System.IO.Path]::GetFileName($FilePath)
+        Path      = $FilePath
         Namespace = ''
         Schema    = ''
         Status    = ''
-        Meldungen = [System.Collections.Generic.List[PSCustomObject]]::new()
+        Messages  = [System.Collections.Generic.List[PSCustomObject]]::new()
     }
 
-    # XML lesbar?
     if (-not (Test-Path $FilePath)) {
-        $result.Status = 'FEHLER'
-        $result.Meldungen.Add([PSCustomObject]@{ Typ = 'Fehler'; Text = 'Datei nicht gefunden.' })
+        $result.Status = 'ERROR'
+        $result.Messages.Add([PSCustomObject]@{ Type = 'Error'; Text = 'File not found.' })
         return $result
     }
 
-    # Namespace ermitteln
     $ns = Get-XmlNamespace -FilePath $FilePath
     if (-not $ns) {
-        $result.Status = 'FEHLER'
-        $result.Meldungen.Add([PSCustomObject]@{ Typ = 'Fehler'; Text = 'Kein XML-Namespace erkannt. Datei ist moeglicherweise kein gueltiges XML.' })
+        $result.Status = 'ERROR'
+        $result.Messages.Add([PSCustomObject]@{ Type = 'Error'; Text = 'No XML namespace detected. File may not be valid XML.' })
         return $result
     }
     $result.Namespace = $ns
 
-    # Schema zuordnen
     $schemaFile = $null
     if ($SchemaMap.Contains($ns)) {
         $schemaFile = Join-Path $SchemaDir $SchemaMap[$ns]
     }
 
     if (-not $schemaFile -or -not (Test-Path $schemaFile)) {
-        $result.Status = 'KEIN SCHEMA'
-        $friendlyNs = $ns
-        $result.Meldungen.Add([PSCustomObject]@{
-            Typ  = 'Warnung'
-            Text = "Kein passendes Schema fuer Namespace: $friendlyNs"
+        $result.Status = 'NO SCHEMA'
+        $result.Messages.Add([PSCustomObject]@{
+            Type = 'Warning'
+            Text = "No matching schema for namespace: $ns"
         })
         return $result
     }
@@ -138,8 +134,8 @@ function Test-SepaXml {
             $newSet.Compile()
             $script:SchemaCache[$ns] = $newSet
         } catch {
-            $result.Status = 'FEHLER'
-            $result.Meldungen.Add([PSCustomObject]@{ Typ = 'Fehler'; Text = "Schema konnte nicht geladen werden: $_" })
+            $result.Status = 'ERROR'
+            $result.Messages.Add([PSCustomObject]@{ Type = 'Error'; Text = "Failed to load schema: $_" })
             return $result
         }
     }
@@ -152,17 +148,17 @@ function Test-SepaXml {
     $readerSettings.ValidationFlags =
         [System.Xml.Schema.XmlSchemaValidationFlags]::ReportValidationWarnings
 
-    $messages = $result.Meldungen
+    $messages = $result.Messages
     $readerSettings.add_ValidationEventHandler([System.Xml.Schema.ValidationEventHandler]{
         param($sender, [System.Xml.Schema.ValidationEventArgs]$e)
-        $typ = if ($e.Severity -eq [System.Xml.Schema.XmlSeverityType]::Error) { 'Fehler' } else { 'Warnung' }
-        $zeile = ''
+        $type = if ($e.Severity -eq [System.Xml.Schema.XmlSeverityType]::Error) { 'Error' } else { 'Warning' }
+        $location = ''
         if ($e.Exception -and $e.Exception.LineNumber -gt 0) {
-            $zeile = " (Zeile $($e.Exception.LineNumber), Spalte $($e.Exception.LinePosition))"
+            $location = " (Line $($e.Exception.LineNumber), Col $($e.Exception.LinePosition))"
         }
         $messages.Add([PSCustomObject]@{
-            Typ  = $typ
-            Text = "$($e.Message)$zeile"
+            Type = $type
+            Text = "$($e.Message)$location"
         })
     })
 
@@ -171,16 +167,16 @@ function Test-SepaXml {
         while ($reader.Read()) { }
         $reader.Close()
     } catch {
-        $result.Meldungen.Add([PSCustomObject]@{ Typ = 'Fehler'; Text = "XML-Lesefehler: $_" })
+        $result.Messages.Add([PSCustomObject]@{ Type = 'Error'; Text = "XML read error: $_" })
     }
 
-    $fehler = @($result.Meldungen | Where-Object { $_.Typ -eq 'Fehler' }).Count
-    $warnungen = @($result.Meldungen | Where-Object { $_.Typ -eq 'Warnung' }).Count
+    $errors = @($result.Messages | Where-Object { $_.Type -eq 'Error' }).Count
+    $warnings = @($result.Messages | Where-Object { $_.Type -eq 'Warning' }).Count
 
-    if ($fehler -gt 0) {
-        $result.Status = "FEHLERHAFT ($fehler Fehler, $warnungen Warnungen)"
-    } elseif ($warnungen -gt 0) {
-        $result.Status = "WARNUNGEN ($warnungen)"
+    if ($errors -gt 0) {
+        $result.Status = "INVALID ($errors errors, $warnings warnings)"
+    } elseif ($warnings -gt 0) {
+        $result.Status = "WARNINGS ($warnings)"
     } else {
         $result.Status = 'OK'
     }
@@ -232,8 +228,8 @@ $toolPanel.Height = 48
 $toolPanel.Padding = New-Object System.Windows.Forms.Padding(12, 8, 12, 8)
 
 $btnDatei = New-Object System.Windows.Forms.Button
-$btnDatei.Text = 'Dateien waehlen...'
-$btnDatei.Size = New-Object System.Drawing.Size(140, 32)
+$btnDatei.Text = 'Select Files...'
+$btnDatei.Size = New-Object System.Drawing.Size(120, 32)
 $btnDatei.Location = New-Object System.Drawing.Point(12, 8)
 $btnDatei.FlatStyle = 'Flat'
 $btnDatei.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 212)
@@ -243,9 +239,9 @@ $btnDatei.Cursor = [System.Windows.Forms.Cursors]::Hand
 $toolPanel.Controls.Add($btnDatei)
 
 $btnOrdner = New-Object System.Windows.Forms.Button
-$btnOrdner.Text = 'Ordner waehlen...'
-$btnOrdner.Size = New-Object System.Drawing.Size(140, 32)
-$btnOrdner.Location = New-Object System.Drawing.Point(162, 8)
+$btnOrdner.Text = 'Select Folder...'
+$btnOrdner.Size = New-Object System.Drawing.Size(120, 32)
+$btnOrdner.Location = New-Object System.Drawing.Point(142, 8)
 $btnOrdner.FlatStyle = 'Flat'
 $btnOrdner.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 212)
 $btnOrdner.ForeColor = [System.Drawing.Color]::White
@@ -254,9 +250,9 @@ $btnOrdner.Cursor = [System.Windows.Forms.Cursors]::Hand
 $toolPanel.Controls.Add($btnOrdner)
 
 $btnExport = New-Object System.Windows.Forms.Button
-$btnExport.Text = 'Ergebnis exportieren...'
-$btnExport.Size = New-Object System.Drawing.Size(160, 32)
-$btnExport.Location = New-Object System.Drawing.Point(312, 8)
+$btnExport.Text = 'Export Results...'
+$btnExport.Size = New-Object System.Drawing.Size(130, 32)
+$btnExport.Location = New-Object System.Drawing.Point(272, 8)
 $btnExport.FlatStyle = 'Flat'
 $btnExport.BackColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
 $btnExport.ForeColor = [System.Drawing.Color]::White
@@ -274,7 +270,7 @@ $dropPanel.Height = 64
 $dropPanel.Padding = New-Object System.Windows.Forms.Padding(12, 0, 12, 8)
 
 $dropLabel = New-Object System.Windows.Forms.Label
-$dropLabel.Text = 'XML-Dateien hierher ziehen oder oben auswaehlen'
+$dropLabel.Text = 'Drop XML files here or use the buttons above'
 $dropLabel.Dock = 'Fill'
 $dropLabel.TextAlign = 'MiddleCenter'
 $dropLabel.Font = New-Object System.Drawing.Font('Segoe UI', 10)
@@ -328,12 +324,12 @@ $grid.ColumnHeadersDefaultCellStyle.Font = New-Object System.Drawing.Font('Segoe
 $grid.ColumnHeadersBorderStyle = 'Single'
 $grid.EnableHeadersVisualStyles = $false
 
-[void]$grid.Columns.Add('Datei', 'Datei')
+[void]$grid.Columns.Add('File', 'File')
 [void]$grid.Columns.Add('Namespace', 'Namespace')
 [void]$grid.Columns.Add('Schema', 'Schema')
 [void]$grid.Columns.Add('Status', 'Status')
 
-$grid.Columns['Datei'].FillWeight = 25
+$grid.Columns['File'].FillWeight = 25
 $grid.Columns['Namespace'].FillWeight = 35
 $grid.Columns['Schema'].FillWeight = 20
 $grid.Columns['Status'].FillWeight = 20
@@ -349,7 +345,7 @@ $detailBox.Font = New-Object System.Drawing.Font('Consolas', 9.5)
 $detailBox.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 30)
 $detailBox.ForeColor = [System.Drawing.Color]::FromArgb(220, 220, 220)
 $detailBox.BorderStyle = 'None'
-$detailBox.Text = 'Details werden hier angezeigt, wenn eine Datei ausgewaehlt wird.'
+$detailBox.Text = 'Select a file above to view validation details.'
 
 $splitContainer.Panel2.Controls.Add($detailBox)
 $form.Controls.Add($splitContainer)
@@ -359,7 +355,7 @@ $statusStrip = New-Object System.Windows.Forms.StatusStrip
 $statusStrip.SizingGrip = $true
 
 $statusLabel = New-Object System.Windows.Forms.ToolStripStatusLabel
-$statusLabel.Text = 'Bereit'
+$statusLabel.Text = 'Ready'
 $statusLabel.Spring = $true
 $statusLabel.TextAlign = 'MiddleLeft'
 
@@ -409,15 +405,15 @@ function Update-StatusBar {
 function Add-ResultToGrid {
     param([PSCustomObject]$Result)
 
-    $rowIndex = $grid.Rows.Add($Result.Datei, $Result.Namespace, $Result.Schema, $Result.Status)
+    $rowIndex = $grid.Rows.Add($Result.File, $Result.Namespace, $Result.Schema, $Result.Status)
     $row = $grid.Rows[$rowIndex]
 
     switch -Wildcard ($Result.Status) {
-        'OK'           { $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::FromArgb(16, 124, 16) }
-        'FEHLERHAFT*'  { $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::FromArgb(196, 43, 28) }
-        'WARNUNGEN*'   { $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::FromArgb(157, 93, 0) }
-        'KEIN SCHEMA'  { $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::FromArgb(157, 93, 0) }
-        'FEHLER'       { $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::FromArgb(196, 43, 28) }
+        'OK'          { $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::FromArgb(16, 124, 16) }
+        'INVALID*'    { $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::FromArgb(196, 43, 28) }
+        'WARNINGS*'   { $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::FromArgb(157, 93, 0) }
+        'NO SCHEMA'   { $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::FromArgb(157, 93, 0) }
+        'ERROR'       { $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::FromArgb(196, 43, 28) }
     }
 }
 
@@ -429,20 +425,18 @@ function Show-Detail {
 
     $detailBox.Clear()
 
-    # Dateiname
     $detailBox.SelectionColor = [System.Drawing.Color]::FromArgb(86, 156, 214)
-    $detailBox.AppendText("Datei: $($r.Pfad)`n")
+    $detailBox.AppendText("File: $($r.Path)`n")
 
     $detailBox.SelectionColor = [System.Drawing.Color]::FromArgb(220, 220, 220)
     $detailBox.AppendText("Namespace: $($r.Namespace)`n")
     $detailBox.AppendText("Schema: $($r.Schema)`n")
 
-    # Status
     $statusColor = switch -Wildcard ($r.Status) {
-        'OK'           { [System.Drawing.Color]::FromArgb(78, 201, 176) }
-        'FEHLERHAFT*'  { [System.Drawing.Color]::FromArgb(244, 71, 71) }
-        'WARNUNGEN*'   { [System.Drawing.Color]::FromArgb(255, 200, 50) }
-        default        { [System.Drawing.Color]::FromArgb(255, 200, 50) }
+        'OK'         { [System.Drawing.Color]::FromArgb(78, 201, 176) }
+        'INVALID*'   { [System.Drawing.Color]::FromArgb(244, 71, 71) }
+        'WARNINGS*'  { [System.Drawing.Color]::FromArgb(255, 200, 50) }
+        default      { [System.Drawing.Color]::FromArgb(255, 200, 50) }
     }
     $detailBox.SelectionColor = $statusColor
     $detailBox.AppendText("Status: $($r.Status)`n")
@@ -450,18 +444,18 @@ function Show-Detail {
     $detailBox.SelectionColor = [System.Drawing.Color]::FromArgb(220, 220, 220)
     $detailBox.AppendText("`n")
 
-    if ($r.Meldungen.Count -eq 0) {
+    if ($r.Messages.Count -eq 0) {
         $detailBox.SelectionColor = [System.Drawing.Color]::FromArgb(78, 201, 176)
-        $detailBox.AppendText("Keine Fehler oder Warnungen.`n")
+        $detailBox.AppendText("No errors or warnings.`n")
     } else {
         $nr = 1
-        foreach ($m in $r.Meldungen) {
-            if ($m.Typ -eq 'Fehler') {
+        foreach ($m in $r.Messages) {
+            if ($m.Type -eq 'Error') {
                 $detailBox.SelectionColor = [System.Drawing.Color]::FromArgb(244, 71, 71)
-                $detailBox.AppendText("[$nr] FEHLER: ")
+                $detailBox.AppendText("[$nr] ERROR: ")
             } else {
                 $detailBox.SelectionColor = [System.Drawing.Color]::FromArgb(255, 200, 50)
-                $detailBox.AppendText("[$nr] WARNUNG: ")
+                $detailBox.AppendText("[$nr] WARNING: ")
             }
             $detailBox.SelectionColor = [System.Drawing.Color]::FromArgb(220, 220, 220)
             $detailBox.AppendText("$($m.Text)`n`n")
@@ -480,8 +474,8 @@ function Start-Validation {
 
     if (-not $xmlFiles) {
         [System.Windows.Forms.MessageBox]::Show(
-            'Keine XML-Dateien gefunden.',
-            'Hinweis',
+            'No XML files found.',
+            'Notice',
             'OK',
             'Information'
         )
@@ -503,7 +497,7 @@ function Start-Validation {
     foreach ($file in $xmlFiles) {
         $nr++
         $fileName = Split-Path -Leaf $file
-        Update-StatusBar "Validiere $nr / $total : $fileName"
+        Update-StatusBar "Validating $nr / $total : $fileName"
         $progressBar.Value = $nr
         [System.Windows.Forms.Application]::DoEvents()
 
@@ -511,30 +505,30 @@ function Start-Validation {
             $result = Test-SepaXml -FilePath $file
         } catch {
             $result = [PSCustomObject]@{
-                Datei     = $fileName
-                Pfad      = $file
+                File      = $fileName
+                Path      = $file
                 Namespace = ''
                 Schema    = ''
-                Status    = 'FEHLER'
-                Meldungen = [System.Collections.Generic.List[PSCustomObject]]::new()
+                Status    = 'ERROR'
+                Messages  = [System.Collections.Generic.List[PSCustomObject]]::new()
             }
-            $result.Meldungen.Add([PSCustomObject]@{ Typ = 'Fehler'; Text = "Unerwarteter Fehler: $_" })
+            $result.Messages.Add([PSCustomObject]@{ Type = 'Error'; Text = "Unexpected error: $_" })
         }
         $script:Results.Add($result)
         Add-ResultToGrid -Result $result
 
         switch -Wildcard ($result.Status) {
-            'OK'           { $ok++ }
-            'FEHLERHAFT*'  { $fail++ }
-            'WARNUNGEN*'   { $warn++ }
-            'KEIN SCHEMA'  { $noSchema++ }
-            'FEHLER'       { $fail++ }
+            'OK'          { $ok++ }
+            'INVALID*'    { $fail++ }
+            'WARNINGS*'   { $warn++ }
+            'NO SCHEMA'   { $noSchema++ }
+            'ERROR'       { $fail++ }
         }
     }
 
     $progressPanel.Visible = $false
     $form.Cursor = [System.Windows.Forms.Cursors]::Default
-    Update-StatusBar "$total Dateien | OK: $ok | Fehlerhaft: $fail | Warnungen: $warn | Kein Schema: $noSchema"
+    Update-StatusBar "$total files | OK: $ok | Invalid: $fail | Warnings: $warn | No Schema: $noSchema"
     $btnExport.Enabled = ($script:Results.Count -gt 0)
 
     if ($grid.Rows.Count -gt 0) {
@@ -555,18 +549,18 @@ $script:HandleDragEnter = {
     if ($_.Data.GetDataPresent([System.Windows.Forms.DataFormats]::FileDrop)) {
         $_.Effect = [System.Windows.Forms.DragDropEffects]::Copy
         $dropLabel.BackColor = [System.Drawing.Color]::FromArgb(230, 243, 255)
-        $dropLabel.Text = 'Loslassen zum Validieren...'
+        $dropLabel.Text = 'Release to validate...'
     }
 }
 
 $script:HandleDragLeave = {
     $dropLabel.BackColor = [System.Drawing.Color]::White
-    $dropLabel.Text = 'XML-Dateien hierher ziehen oder oben auswaehlen'
+    $dropLabel.Text = 'Drop XML files here or use the buttons above'
 }
 
 $script:HandleDragDrop = {
     $dropLabel.BackColor = [System.Drawing.Color]::White
-    $dropLabel.Text = 'XML-Dateien hierher ziehen oder oben auswaehlen'
+    $dropLabel.Text = 'Drop XML files here or use the buttons above'
 
     $dropped = $_.Data.GetData([System.Windows.Forms.DataFormats]::FileDrop)
     $allFiles = [System.Collections.Generic.List[string]]::new()
@@ -591,8 +585,8 @@ foreach ($ctrl in @($form, $dropLabel, $grid)) {
 
 $btnDatei.add_Click({
     $dlg = New-Object System.Windows.Forms.OpenFileDialog
-    $dlg.Title = 'SEPA-XML-Dateien auswaehlen'
-    $dlg.Filter = 'XML-Dateien (*.xml)|*.xml|Alle Dateien (*.*)|*.*'
+    $dlg.Title = 'Select SEPA XML Files'
+    $dlg.Filter = 'XML Files (*.xml)|*.xml|All Files (*.*)|*.*'
     $dlg.Multiselect = $true
     if ($dlg.ShowDialog() -eq 'OK') {
         Start-Validation -Files $dlg.FileNames
@@ -601,7 +595,7 @@ $btnDatei.add_Click({
 
 $btnOrdner.add_Click({
     $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
-    $dlg.Description = 'Ordner mit SEPA-XML-Dateien auswaehlen'
+    $dlg.Description = 'Select folder containing SEPA XML files'
     $dlg.ShowNewFolderButton = $false
     if ($dlg.ShowDialog() -eq 'OK') {
         $files = Get-ChildItem -Path $dlg.SelectedPath -Filter '*.xml' -Recurse -File | ForEach-Object { $_.FullName }
@@ -611,31 +605,31 @@ $btnOrdner.add_Click({
 
 $btnExport.add_Click({
     $dlg = New-Object System.Windows.Forms.SaveFileDialog
-    $dlg.Title = 'Validierungsergebnis exportieren'
-    $dlg.Filter = 'Textdatei (*.txt)|*.txt|Alle Dateien (*.*)|*.*'
-    $dlg.FileName = "SEPA_Validierung_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+    $dlg.Title = 'Export Validation Results'
+    $dlg.Filter = 'Text Files (*.txt)|*.txt|All Files (*.*)|*.*'
+    $dlg.FileName = "SEPA_Validation_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
     if ($dlg.ShowDialog() -eq 'OK') {
         $sb = New-Object System.Text.StringBuilder
         $total = $script:Results.Count
         $okCount = @($script:Results | Where-Object { $_.Status -eq 'OK' }).Count
         $failCount = $total - $okCount
 
-        [void]$sb.AppendLine("SEPA XML Validierung - $(Get-Date -Format 'dd.MM.yyyy HH:mm:ss')")
-        [void]$sb.AppendLine("$total Dateien geprueft | OK: $okCount | Fehlerhaft: $failCount")
+        [void]$sb.AppendLine("SEPA XML Validation - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')")
+        [void]$sb.AppendLine("$total files checked | OK: $okCount | Invalid: $failCount")
         [void]$sb.AppendLine(('=' * 80))
 
         foreach ($r in $script:Results) {
             [void]$sb.AppendLine('')
-            [void]$sb.AppendLine("Datei: $($r.Pfad)")
+            [void]$sb.AppendLine("File: $($r.Path)")
             [void]$sb.AppendLine("Namespace: $($r.Namespace)")
             [void]$sb.AppendLine("Schema: $($r.Schema)")
             [void]$sb.AppendLine("Status: $($r.Status)")
 
-            if ($r.Meldungen.Count -gt 0) {
+            if ($r.Messages.Count -gt 0) {
                 [void]$sb.AppendLine('')
                 $nr = 1
-                foreach ($m in $r.Meldungen) {
-                    $label = if ($m.Typ -eq 'Fehler') { 'FEHLER' } else { 'WARNUNG' }
+                foreach ($m in $r.Messages) {
+                    $label = if ($m.Type -eq 'Error') { 'ERROR' } else { 'WARNING' }
                     [void]$sb.AppendLine("[$nr] ${label}: $($m.Text)")
                     [void]$sb.AppendLine('')
                     $nr++
@@ -646,15 +640,15 @@ $btnExport.add_Click({
         }
 
         [System.IO.File]::WriteAllText($dlg.FileName, $sb.ToString(), [System.Text.Encoding]::UTF8)
-        Update-StatusBar "Export gespeichert: $($dlg.FileName)"
+        Update-StatusBar "Export saved: $($dlg.FileName)"
     }
 })
 
 # --- Schema-Verzeichnis pruefen ---
 if (-not (Test-Path $SchemaDir)) {
     [System.Windows.Forms.MessageBox]::Show(
-        "Schema-Ordner nicht gefunden:`n$SchemaDir`n`nBitte legen Sie einen Ordner 'schemas' neben diesem Script an und kopieren Sie die XSD-Dateien hinein.",
-        'Schema-Ordner fehlt',
+        "Schema folder not found:`n$SchemaDir`n`nPlease create a 'schemas' folder next to this script and place the XSD files inside.",
+        'Schema Folder Missing',
         'OK',
         'Warning'
     )
@@ -665,8 +659,8 @@ if (-not (Test-Path $SchemaDir)) {
 
 } catch {
     [System.Windows.Forms.MessageBox]::Show(
-        "Unerwarteter Fehler:`n`n$_`n`n$($_.ScriptStackTrace)",
-        'SEPA Validator - Fehler',
+        "Unexpected error:`n`n$_`n`n$($_.ScriptStackTrace)",
+        'SEPA Validator - Error',
         'OK',
         'Error'
     )
