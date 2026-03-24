@@ -50,9 +50,38 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 
 ## Usage
 
-1. **Load files** - drag & drop, "Dateien waehlen..." (file picker) or "Ordner waehlen..." (folder picker)
+### Windows GUI
+
+1. **Load files** - drag & drop, "Select Files..." or "Select Folder..."
 2. **Review results** - click a file in the upper grid to see details below
-3. **Export** - "Ergebnis exportieren..." saves a text report
+3. **Export** - "Export Results..." saves a text report
+
+### Linux / macOS CLI
+
+Requires `xmllint` (from `libxml2-utils` on Debian/Ubuntu or `libxml2` via Homebrew on macOS).
+
+```bash
+# Validate a single file
+./scripts/validate.sh payment.xml
+
+# Validate multiple files
+./scripts/validate.sh file1.xml file2.xml file3.xml
+
+# Validate all XMLs in a folder
+./scripts/validate.sh /path/to/xml/files/
+
+# Use a custom schema directory
+./scripts/validate.sh --schema-dir ./my-schemas payment.xml
+
+# Export results to CSV
+./scripts/validate.sh --csv report.csv *.xml
+
+# Export results to text report
+./scripts/validate.sh --export report.txt *.xml
+
+# Quiet mode (errors and summary only)
+./scripts/validate.sh -q *.xml
+```
 
 ## Adding Custom Schemas
 
@@ -83,18 +112,27 @@ Place the downloaded `.xsd` files in `xml_schema/` (for EXE builds) or `windows/
 
 ## Requirements
 
+### Windows GUI
 - Windows 10 or 11
 - PowerShell 5.1+ (preinstalled)
 - No admin rights required
+
+### Linux / macOS CLI
+- Bash
+- `xmllint` (`sudo apt install libxml2-utils` or `brew install libxml2`)
 
 ## Project Structure
 
 ```
 windows/
-  SEPA-Validator.ps1    # Main application
+  SEPA-Validator.ps1    # Main GUI application (Windows)
   SEPA-Validator.cmd    # Launcher (double-click)
   build.ps1             # EXE build script
   setup.cmd             # Schema copy helper
+scripts/
+  validate.sh           # CLI validator (Linux/macOS)
+  validate_all.sh       # Batch validator with CSV output
+  rename_xml_by_*.sh    # File renaming utilities
 xml_schema/             # XSD schema files (not included - download from sources above)
 ```
 
