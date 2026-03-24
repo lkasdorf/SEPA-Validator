@@ -9,8 +9,11 @@
     Voraussetzung: XSD-Schemas im Unterordner "schemas\" neben diesem Script.
 #>
 
+try {
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -40,7 +43,10 @@ $script:SchemaCache = @{}
 function Get-XmlNamespace {
     param([string]$FilePath)
     try {
-        $reader = [System.Xml.XmlReader]::Create($FilePath)
+        $settings = New-Object System.Xml.XmlReaderSettings
+        $settings.XmlResolver = $null
+        $settings.DtdProcessing = [System.Xml.DtdProcessing]::Ignore
+        $reader = [System.Xml.XmlReader]::Create($FilePath, $settings)
         while ($reader.Read()) {
             if ($reader.NodeType -eq [System.Xml.XmlNodeType]::Element) {
                 $ns = $reader.NamespaceURI
@@ -103,8 +109,14 @@ function Test-SepaXml {
     # Schema aus Cache laden oder einmalig kompilieren
     if (-not $script:SchemaCache.ContainsKey($ns)) {
         $newSet = New-Object System.Xml.Schema.XmlSchemaSet
+        $newSet.XmlResolver = $null  # Keine Netzwerkzugriffe
         try {
-            [void]$newSet.Add($ns, $schemaFile)
+            $schemaReader = [System.Xml.XmlReader]::Create(
+                $schemaFile,
+                (New-Object System.Xml.XmlReaderSettings -Property @{ XmlResolver = $null })
+            )
+            [void]$newSet.Add($ns, $schemaReader)
+            $schemaReader.Close()
             $newSet.Compile()
             $script:SchemaCache[$ns] = $newSet
         } catch {
@@ -118,15 +130,18 @@ function Test-SepaXml {
     $readerSettings = New-Object System.Xml.XmlReaderSettings
     $readerSettings.ValidationType = [System.Xml.ValidationType]::Schema
     $readerSettings.Schemas = $schemaSet
+    $readerSettings.XmlResolver = $null  # Keine Netzwerkzugriffe
     $readerSettings.ValidationFlags =
-        [System.Xml.Schema.XmlSchemaValidationFlags]::ReportValidationWarnings -bor
-        [System.Xml.Schema.XmlSchemaValidationFlags]::ProcessSchemaLocation
+        [System.Xml.Schema.XmlSchemaValidationFlags]::ReportValidationWarnings
 
     $messages = $result.Meldungen
-    $readerSettings.add_ValidationEventHandler({
-        param($sender, $e)
+    $readerSettings.add_ValidationEventHandler([System.Xml.Schema.ValidationEventHandler]{
+        param($sender, [System.Xml.Schema.ValidationEventArgs]$e)
         $typ = if ($e.Severity -eq [System.Xml.Schema.XmlSeverityType]::Error) { 'Fehler' } else { 'Warnung' }
-        $zeile = if ($e.Exception -and $e.Exception.LineNumber -gt 0) { " (Zeile $($e.Exception.LineNumber), Spalte $($e.Exception.LinePosition))" } else { '' }
+        $zeile = ''
+        if ($e.Exception -and $e.Exception.LineNumber -gt 0) {
+            $zeile = " (Zeile $($e.Exception.LineNumber), Spalte $($e.Exception.LinePosition))"
+        }
         $messages.Add([PSCustomObject]@{
             Typ  = $typ
             Text = "$($e.Message)$zeile"
@@ -248,6 +263,7 @@ $dropLabel.Font = New-Object System.Drawing.Font('Segoe UI', 10)
 $dropLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
 $dropLabel.BackColor = [System.Drawing.Color]::White
 $dropLabel.BorderStyle = 'FixedSingle'
+$dropLabel.AllowDrop = $true
 $dropPanel.Controls.Add($dropLabel)
 $form.Controls.Add($dropPanel)
 
@@ -303,6 +319,7 @@ $grid.Columns['Datei'].FillWeight = 25
 $grid.Columns['Namespace'].FillWeight = 35
 $grid.Columns['Schema'].FillWeight = 20
 $grid.Columns['Status'].FillWeight = 20
+$grid.AllowDrop = $true
 
 $splitContainer.Panel1.Controls.Add($grid)
 
@@ -435,7 +452,8 @@ function Start-Validation {
 
     foreach ($file in $xmlFiles) {
         $nr++
-        Update-StatusBar "Validiere $nr / $total : $(Split-Path -Leaf $file)"
+        $fileName = Split-Path -Leaf $file
+        Update-StatusBar "Validiere $nr / $total : $fileName"
         $progressBar.Value = $nr
         [System.Windows.Forms.Application]::DoEvents()
 
@@ -471,20 +489,20 @@ $grid.add_SelectionChanged({
     }
 })
 
-$form.add_DragEnter({
+$script:HandleDragEnter = {
     if ($_.Data.GetDataPresent([System.Windows.Forms.DataFormats]::FileDrop)) {
         $_.Effect = [System.Windows.Forms.DragDropEffects]::Copy
         $dropLabel.BackColor = [System.Drawing.Color]::FromArgb(230, 243, 255)
         $dropLabel.Text = 'Loslassen zum Validieren...'
     }
-})
+}
 
-$form.add_DragLeave({
+$script:HandleDragLeave = {
     $dropLabel.BackColor = [System.Drawing.Color]::White
     $dropLabel.Text = 'XML-Dateien hierher ziehen oder oben auswaehlen'
-})
+}
 
-$form.add_DragDrop({
+$script:HandleDragDrop = {
     $dropLabel.BackColor = [System.Drawing.Color]::White
     $dropLabel.Text = 'XML-Dateien hierher ziehen oder oben auswaehlen'
 
@@ -500,7 +518,14 @@ $form.add_DragDrop({
     }
 
     Start-Validation -Files $allFiles.ToArray()
-})
+}
+
+# Drag & Drop auf alle relevanten Controls
+foreach ($ctrl in @($form, $dropLabel, $grid)) {
+    $ctrl.add_DragEnter($script:HandleDragEnter)
+    $ctrl.add_DragLeave($script:HandleDragLeave)
+    $ctrl.add_DragDrop($script:HandleDragDrop)
+}
 
 $btnDatei.add_Click({
     $dlg = New-Object System.Windows.Forms.OpenFileDialog
@@ -551,3 +576,10 @@ if (-not (Test-Path $SchemaDir)) {
 
 # --- Start ---
 [void]$form.ShowDialog()
+
+} catch {
+    Write-Host "`nFEHLER: $_" -ForegroundColor Red
+    Write-Host $_.ScriptStackTrace -ForegroundColor DarkRed
+    Write-Host "`nDruecken Sie eine Taste zum Schliessen..." -ForegroundColor Yellow
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+}
