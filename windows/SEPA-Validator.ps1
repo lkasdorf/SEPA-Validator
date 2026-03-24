@@ -216,7 +216,7 @@ $titleLabel.Location = New-Object System.Drawing.Point(16, 12)
 $headerPanel.Controls.Add($titleLabel)
 
 $versionLabel = New-Object System.Windows.Forms.Label
-$versionLabel.Text = 'v1.0'
+$versionLabel.Text = 'v1.0.0'
 $versionLabel.ForeColor = [System.Drawing.Color]::FromArgb(180, 210, 240)
 $versionLabel.Font = New-Object System.Drawing.Font('Segoe UI', 9)
 $versionLabel.AutoSize = $true
@@ -356,11 +356,43 @@ $form.Controls.Add($splitContainer)
 
 # --- Statusleiste ---
 $statusStrip = New-Object System.Windows.Forms.StatusStrip
+$statusStrip.SizingGrip = $true
+
 $statusLabel = New-Object System.Windows.Forms.ToolStripStatusLabel
 $statusLabel.Text = 'Bereit'
 $statusLabel.Spring = $true
 $statusLabel.TextAlign = 'MiddleLeft'
+
+$sepA1 = New-Object System.Windows.Forms.ToolStripSeparator
+
+$ghLink = New-Object System.Windows.Forms.ToolStripStatusLabel
+$ghLink.Text = 'GitHub'
+$ghLink.IsLink = $true
+$ghLink.LinkColor = [System.Drawing.Color]::FromArgb(0, 102, 180)
+$ghLink.ActiveLinkColor = [System.Drawing.Color]::FromArgb(0, 70, 130)
+$ghLink.VisitedLinkColor = [System.Drawing.Color]::FromArgb(0, 102, 180)
+$ghLink.add_Click({ [System.Diagnostics.Process]::Start('https://github.com/lkasdorf/SEPA-Validator') })
+
+$sepA2 = New-Object System.Windows.Forms.ToolStripSeparator
+
+$licenseLabel = New-Object System.Windows.Forms.ToolStripStatusLabel
+$licenseLabel.Text = 'MIT License'
+$licenseLabel.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
+
+$sepA3 = New-Object System.Windows.Forms.ToolStripSeparator
+
+$versionStatus = New-Object System.Windows.Forms.ToolStripStatusLabel
+$versionStatus.Text = 'v1.0.0'
+$versionStatus.ForeColor = [System.Drawing.Color]::FromArgb(100, 100, 100)
+
 [void]$statusStrip.Items.Add($statusLabel)
+[void]$statusStrip.Items.Add($sepA1)
+[void]$statusStrip.Items.Add($ghLink)
+[void]$statusStrip.Items.Add($sepA2)
+[void]$statusStrip.Items.Add($licenseLabel)
+[void]$statusStrip.Items.Add($sepA3)
+[void]$statusStrip.Items.Add($versionStatus)
+
 $form.Controls.Add($statusStrip)
 
 # --- Daten-Speicher ---
