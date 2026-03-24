@@ -156,8 +156,8 @@ function Test-SepaXml {
         $result.Meldungen.Add([PSCustomObject]@{ Typ = 'Fehler'; Text = "XML-Lesefehler: $_" })
     }
 
-    $fehler = ($result.Meldungen | Where-Object { $_.Typ -eq 'Fehler' }).Count
-    $warnungen = ($result.Meldungen | Where-Object { $_.Typ -eq 'Warnung' }).Count
+    $fehler = @($result.Meldungen | Where-Object { $_.Typ -eq 'Fehler' }).Count
+    $warnungen = @($result.Meldungen | Where-Object { $_.Typ -eq 'Warnung' }).Count
 
     if ($fehler -gt 0) {
         $result.Status = "FEHLERHAFT ($fehler Fehler, $warnungen Warnungen)"
@@ -457,7 +457,19 @@ function Start-Validation {
         $progressBar.Value = $nr
         [System.Windows.Forms.Application]::DoEvents()
 
-        $result = Test-SepaXml -FilePath $file
+        try {
+            $result = Test-SepaXml -FilePath $file
+        } catch {
+            $result = [PSCustomObject]@{
+                Datei     = $fileName
+                Pfad      = $file
+                Namespace = ''
+                Schema    = ''
+                Status    = 'FEHLER'
+                Meldungen = [System.Collections.Generic.List[PSCustomObject]]::new()
+            }
+            $result.Meldungen.Add([PSCustomObject]@{ Typ = 'Fehler'; Text = "Unerwarteter Fehler: $_" })
+        }
         $script:Results.Add($result)
         Add-ResultToGrid -Result $result
 
@@ -578,8 +590,10 @@ if (-not (Test-Path $SchemaDir)) {
 [void]$form.ShowDialog()
 
 } catch {
-    Write-Host "`nFEHLER: $_" -ForegroundColor Red
-    Write-Host $_.ScriptStackTrace -ForegroundColor DarkRed
-    Write-Host "`nDruecken Sie eine Taste zum Schliessen..." -ForegroundColor Yellow
-    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+    [System.Windows.Forms.MessageBox]::Show(
+        "Unerwarteter Fehler:`n`n$_`n`n$($_.ScriptStackTrace)",
+        'SEPA Validator - Fehler',
+        'OK',
+        'Error'
+    )
 }
