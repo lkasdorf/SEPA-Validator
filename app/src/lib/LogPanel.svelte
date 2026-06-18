@@ -39,7 +39,10 @@
 
   <ul>
     {#each msgs as m}
-      <li class={m.severity} class:clickable={!!m.line} on:click={() => click(m)}>
+      <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
+      <li class={m.severity} class:clickable={!!m.line} on:click={() => click(m)}
+          on:keydown={(e) => { if (m.line && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); click(m); } }}
+          role="button" tabindex="0">
         <span class="badge">{m.severity === "error" ? "ERROR" : "WARN"}</span>
         <span class="text">{m.text}</span>
         {#if m.line}<span class="loc">L{m.line}{m.column ? `:${m.column}` : ""}</span>{/if}

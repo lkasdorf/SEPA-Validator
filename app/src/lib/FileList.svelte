@@ -19,7 +19,10 @@
 
 <ul class="filelist">
   {#each $results as r, i}
+    <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
     <li class:selected={i === $selectedIndex} on:click={() => selectedIndex.set(i)}
+        on:keydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectedIndex.set(i); } }}
+        role="button" tabindex="0"
         title={statusLabel(r)}>
       <span class="icon {cls(r)}">{icon(r)}</span>
       <span class="name">{r.file}</span>

@@ -68,7 +68,7 @@ cd app
 npm install
 
 # Run in dev (opens the app window with hot-reload)
-npm run tauri dev
+npx tauri dev
 
 # Type-check the frontend
 npm run check

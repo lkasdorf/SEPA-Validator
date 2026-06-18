@@ -1,6 +1,7 @@
 import { mount } from 'svelte'
 import './app.css'
 import App from './App.svelte'
+import { get } from "svelte/store";
 import { theme } from "./lib/stores";
 
 const app = mount(App, {
@@ -15,8 +16,4 @@ function apply(t: "system" | "light" | "dark") {
   document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
 }
 theme.subscribe(apply);
-mq.addEventListener("change", () => {
-  let cur: "system" | "light" | "dark" = "system";
-  theme.subscribe((t) => (cur = t))();
-  apply(cur);
-});
+mq.addEventListener("change", () => apply(get(theme)));

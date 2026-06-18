@@ -19,7 +19,7 @@
       if (ev.event === "started") {
         progress.set({ done: 0, total: ev.data.total, running: true });
       } else if (ev.event === "result") {
-        results.update((r) => { r[ev.data.index] = ev.data.result; return r; });
+        results.update((r) => { r.push(ev.data.result); return r; });
         progress.update((p) => ({ ...p, done: p.done + 1 }));
         if (ev.data.index === 0) selectedIndex.set(0);
       } else if (ev.event === "finished") {
