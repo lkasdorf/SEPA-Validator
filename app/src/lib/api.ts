@@ -15,6 +15,10 @@ export function readFile(path: string): Promise<string> {
   return invoke<string>("read_file", { path });
 }
 
+export function readFormatted(path: string): Promise<string> {
+  return invoke<string>("read_formatted", { path });
+}
+
 export function writeTextFile(path: string, contents: string): Promise<void> {
   return invoke("write_text_file", { path, contents });
 }
