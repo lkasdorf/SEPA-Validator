@@ -1,5 +1,6 @@
 mod model;
 mod schema;
+mod validator;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
