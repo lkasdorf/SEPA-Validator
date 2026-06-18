@@ -1,4 +1,5 @@
 mod commands;
+mod formatting;
 mod model;
 mod scanner;
 mod schema;
