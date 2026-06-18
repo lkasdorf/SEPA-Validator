@@ -1,4 +1,5 @@
 mod model;
+mod scanner;
 mod schema;
 mod validator;
 
