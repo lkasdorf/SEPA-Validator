@@ -2,3 +2,6 @@
 # will have compiled files and executables
 /target/
 /gen/schemas
+
+# Local-only vcpkg/libxml2 build config (machine-specific path)
+/.cargo/
