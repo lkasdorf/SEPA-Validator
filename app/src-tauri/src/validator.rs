@@ -41,14 +41,25 @@ impl Default for Validator {
 
 impl Validator {
     pub fn new() -> Self {
-        Self { cache: HashMap::new() }
+        Self {
+            cache: HashMap::new(),
+        }
     }
 
     pub fn validate_file(&mut self, path: &Path) -> ValidationResult {
-        let file = path.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
+        let file = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
         let path_str = path.display().to_string();
 
-        let mk = |ns: String, schema_name: String, msgs: Vec<Message>, status: Status, e: u32, w: u32| {
+        let mk = |ns: String,
+                  schema_name: String,
+                  msgs: Vec<Message>,
+                  status: Status,
+                  e: u32,
+                  w: u32| {
             ValidationResult {
                 file: file.clone(),
                 path: path_str.clone(),
@@ -62,40 +73,100 @@ impl Validator {
         };
 
         if !path.exists() {
-            return mk(String::new(), String::new(),
-                vec![Message { severity: Severity::Error, text: "File not found.".into(), line: None, column: None }],
-                Status::Error, 1, 0);
+            return mk(
+                String::new(),
+                String::new(),
+                vec![Message {
+                    severity: Severity::Error,
+                    text: "File not found.".into(),
+                    line: None,
+                    column: None,
+                }],
+                Status::Error,
+                1,
+                0,
+            );
         }
 
         let ns = match detect_namespace(path) {
             Some(ns) => ns,
-            None => return mk(String::new(), String::new(),
-                vec![Message { severity: Severity::Error, text: "No XML namespace detected. File may not be valid XML.".into(), line: None, column: None }],
-                Status::Error, 1, 0),
+            None => {
+                return mk(
+                    String::new(),
+                    String::new(),
+                    vec![Message {
+                        severity: Severity::Error,
+                        text: "No XML namespace detected. File may not be valid XML.".into(),
+                        line: None,
+                        column: None,
+                    }],
+                    Status::Error,
+                    1,
+                    0,
+                )
+            }
         };
 
         let (schema_name, _bytes) = match schema::lookup(&ns) {
             Some(v) => v,
-            None => return mk(ns.clone(), String::new(),
-                vec![Message { severity: Severity::Warning, text: format!("No matching schema for namespace: {ns}"), line: None, column: None }],
-                Status::NoSchema, 0, 1),
+            None => {
+                return mk(
+                    ns.clone(),
+                    String::new(),
+                    vec![Message {
+                        severity: Severity::Warning,
+                        text: format!("No matching schema for namespace: {ns}"),
+                        line: None,
+                        column: None,
+                    }],
+                    Status::NoSchema,
+                    0,
+                    1,
+                )
+            }
         };
 
         if !self.cache.contains_key(schema_name) {
             match self.compile(&ns) {
-                Ok(ctx) => { self.cache.insert(schema_name, ctx); }
-                Err(text) => return mk(ns.clone(), schema_name.to_string(),
-                    vec![Message { severity: Severity::Error, text, line: None, column: None }],
-                    Status::Error, 1, 0),
+                Ok(ctx) => {
+                    self.cache.insert(schema_name, ctx);
+                }
+                Err(text) => {
+                    return mk(
+                        ns.clone(),
+                        schema_name.to_string(),
+                        vec![Message {
+                            severity: Severity::Error,
+                            text,
+                            line: None,
+                            column: None,
+                        }],
+                        Status::Error,
+                        1,
+                        0,
+                    )
+                }
             }
         }
         let validator = self.cache.get_mut(schema_name).unwrap();
 
         let doc = match Parser::default().parse_file(&path_str) {
             Ok(d) => d,
-            Err(e) => return mk(ns.clone(), schema_name.to_string(),
-                vec![Message { severity: Severity::Error, text: format!("XML parse error: {e:?}"), line: None, column: None }],
-                Status::Error, 1, 0),
+            Err(e) => {
+                return mk(
+                    ns.clone(),
+                    schema_name.to_string(),
+                    vec![Message {
+                        severity: Severity::Error,
+                        text: format!("XML parse error: {e:?}"),
+                        line: None,
+                        column: None,
+                    }],
+                    Status::Error,
+                    1,
+                    0,
+                )
+            }
         };
 
         let messages = match validator.validate_document(&doc) {
@@ -121,10 +192,20 @@ fn to_message(e: &libxml::error::StructuredError) -> Message {
         XmlErrorLevel::Warning => Severity::Warning,
         _ => Severity::Error,
     };
-    let text = e.message.clone().unwrap_or_else(|| "validation error".into()).trim().to_string();
+    let text = e
+        .message
+        .clone()
+        .unwrap_or_else(|| "validation error".into())
+        .trim()
+        .to_string();
     let line = e.line.filter(|l| *l > 0).map(|l| l as u32);
     let column = e.col.filter(|c| *c > 0).map(|c| c as u32);
-    Message { severity, text, line, column }
+    Message {
+        severity,
+        text,
+        line,
+        column,
+    }
 }
 
 #[cfg(test)]
@@ -142,7 +223,9 @@ mod tests {
 
     #[test]
     fn detects_default_namespace_on_root() {
-        let p = temp_xml(r#"<?xml version="1.0"?><Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.008.001.02"><X/></Document>"#);
+        let p = temp_xml(
+            r#"<?xml version="1.0"?><Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.008.001.02"><X/></Document>"#,
+        );
         assert_eq!(
             detect_namespace(&p).as_deref(),
             Some("urn:iso:std:iso:20022:tech:xsd:pain.008.001.02")
@@ -164,7 +247,9 @@ mod tests {
     use crate::model::Status;
 
     fn repo_root() -> std::path::PathBuf {
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
     }
 
     #[test]
@@ -178,8 +263,13 @@ mod tests {
 
     #[test]
     fn valid_fixture_is_ok() {
-        let f = repo_root().join("to_check/valid/20250410_ENRW_ENERGIEVERSORGUNG_ROTTWEIL_GMBH_CO_KG_PAIN00800102.xml");
-        if !f.exists() { eprintln!("SKIP: fixture absent"); return; }
+        let f = repo_root().join(
+            "to_check/valid/20250410_ENRW_ENERGIEVERSORGUNG_ROTTWEIL_GMBH_CO_KG_PAIN00800102.xml",
+        );
+        if !f.exists() {
+            eprintln!("SKIP: fixture absent");
+            return;
+        }
         let mut v = super::Validator::new();
         let r = v.validate_file(&f);
         assert_eq!(r.status, Status::Ok, "messages: {:?}", r.messages);
@@ -188,11 +278,17 @@ mod tests {
     #[test]
     fn invalid_fixture_reports_errors() {
         let f = repo_root().join("to_check/invalid/20250121_NOFIRMA_PAIN00100109_1.xml");
-        if !f.exists() { eprintln!("SKIP: fixture absent"); return; }
+        if !f.exists() {
+            eprintln!("SKIP: fixture absent");
+            return;
+        }
         let mut v = super::Validator::new();
         let r = v.validate_file(&f);
         assert_eq!(r.status, Status::Invalid);
         assert!(r.errors >= 1);
-        assert!(r.messages.iter().any(|m| m.line.is_some()), "expect at least one located error");
+        assert!(
+            r.messages.iter().any(|m| m.line.is_some()),
+            "expect at least one located error"
+        );
     }
 }

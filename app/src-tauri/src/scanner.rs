@@ -48,7 +48,11 @@ mod tests {
         fs::write(dir.join("sub/c.XML"), "<c/>").unwrap();
 
         let got = expand_paths([&dir]);
-        let names: Vec<_> = got.iter().filter_map(|p| p.file_name()?.to_str()).map(|s| s.to_string()).collect();
+        let names: Vec<_> = got
+            .iter()
+            .filter_map(|p| p.file_name()?.to_str())
+            .map(|s| s.to_string())
+            .collect();
         assert!(names.contains(&"a.xml".to_string()));
         assert!(names.contains(&"c.XML".to_string()));
         assert!(!names.iter().any(|n| n.ends_with(".txt")));
