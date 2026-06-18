@@ -24,7 +24,7 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 ### Tauri/Rust App (on Windows) — `app/`
 ```sh
 cd app && npm install
-npm run tauri dev                  # run with hot-reload
+npx tauri dev                      # run with hot-reload
 cd src-tauri && cargo test         # backend tests (15 unit + 2 spike)
 cd app && npx tauri build --no-bundle   # standalone exe -> src-tauri/target/release/app.exe
 ```
