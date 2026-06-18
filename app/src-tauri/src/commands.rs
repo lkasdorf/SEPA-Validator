@@ -54,3 +54,15 @@ pub fn read_file(path: String) -> Result<String, String> {
 pub fn write_text_file(path: String, contents: String) -> Result<(), String> {
     std::fs::write(&path, contents).map_err(|e| e.to_string())
 }
+
+/// Return the pretty-printed XML for the viewer. Falls back to raw bytes if the
+/// file isn't well-formed (so the user still sees the content).
+#[tauri::command]
+pub fn read_formatted(path: String) -> Result<String, String> {
+    match crate::formatting::format_xml(std::path::Path::new(&path)) {
+        Ok(s) => Ok(s),
+        Err(_) => std::fs::read(&path)
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .map_err(|e| e.to_string()),
+    }
+}
