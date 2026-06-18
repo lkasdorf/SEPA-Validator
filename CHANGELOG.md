@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - System-aware light/dark theme with a manual toggle.
 - Export validation results as TXT or CSV.
 - Drag & drop files or folders (folders scanned recursively).
+- Custom application icon.
+- Resizable side panels (draggable gutters between the file list, viewer, and log).
+- Pretty-printed XML in the viewer — readable even when the source is all on one line.
+- Clicking an error scrolls its line to the center of the viewer and highlights it with a brief flash.
 
 ### Changed
 - XSD validation engine moved from .NET (`System.Xml.Schema`) to **libxml2** (Rust `libxml` crate). Valid/invalid verdicts are equivalent; error message wording differs.
