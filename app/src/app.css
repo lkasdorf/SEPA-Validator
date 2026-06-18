@@ -11,6 +11,7 @@
 html, body, .app { height: 100%; margin: 0; }
 body { font: 14px "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg); }
 .app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
-.body { display: grid; grid-template-columns: 260px 1fr 360px; min-height: 0; }
-.files, .viewer, .log { min-height: 0; overflow: hidden; border-right: 1px solid var(--border); background: var(--panel); }
-.log { border-right: none; }
+.body { display: grid; min-height: 0; }
+.files, .viewer, .log { min-height: 0; overflow: hidden; background: var(--panel); }
+.gutter { background: var(--border); cursor: col-resize; }
+.gutter:hover { background: var(--accent); }
