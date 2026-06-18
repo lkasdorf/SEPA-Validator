@@ -23,3 +23,5 @@ export const summary = derived(results, ($r) => ({
   warnings: $r.filter((x) => x.status === "warnings").length,
   noSchema: $r.filter((x) => x.status === "no_schema").length,
 }));
+
+export const jumpToLine = writable<(line: number) => void>(() => {});
