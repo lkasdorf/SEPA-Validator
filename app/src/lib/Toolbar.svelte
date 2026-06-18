@@ -5,6 +5,10 @@
   import { startValidation } from "./api";
   import { results, selectedIndex, progress, theme } from "./stores";
   import type { ValidationEvent } from "./types";
+  import { exportTxt, exportCsv } from "./export";
+  import { get } from "svelte/store";
+  function doExportTxt() { exportTxt(get(results)); }
+  function doExportCsv() { exportCsv(get(results)); }
 
   async function run(paths: string[]) {
     if (paths.length === 0) return;
@@ -48,6 +52,8 @@
   <strong class="brand">SEPA XML Validator</strong>
   <button on:click={pickFiles}>Select Files…</button>
   <button on:click={pickFolder}>Select Folder…</button>
+  <button on:click={doExportTxt} disabled={$results.length === 0}>Export TXT</button>
+  <button on:click={doExportCsv} disabled={$results.length === 0}>Export CSV</button>
   <span class="hint">or drag &amp; drop files here</span>
   <button class="theme" on:click={toggleTheme} title="Toggle theme">◐</button>
 </header>

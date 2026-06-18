@@ -48,3 +48,9 @@ pub fn read_file(path: String) -> Result<String, String> {
         .map(|b| String::from_utf8_lossy(&b).into_owned())
         .map_err(|e| e.to_string())
 }
+
+/// Write text to an absolute path chosen via the save dialog.
+#[tauri::command]
+pub fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    std::fs::write(&path, contents).map_err(|e| e.to_string())
+}
