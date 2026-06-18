@@ -13,14 +13,17 @@ use libxml::schemas::{SchemaParserContext, SchemaValidationContext};
 extern "C" {}
 
 fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
 }
 
 #[test]
 fn valid_file_passes_schema() {
     let xsd = repo_root().join("xml_schema/pain.008.001.02.xsd");
-    let valid = repo_root()
-        .join("to_check/valid/20250410_ENRW_ENERGIEVERSORGUNG_ROTTWEIL_GMBH_CO_KG_PAIN00800102.xml");
+    let valid = repo_root().join(
+        "to_check/valid/20250410_ENRW_ENERGIEVERSORGUNG_ROTTWEIL_GMBH_CO_KG_PAIN00800102.xml",
+    );
 
     assert!(xsd.exists(), "missing xsd fixture: {}", xsd.display());
     assert!(valid.exists(), "missing valid fixture: {}", valid.display());
@@ -50,11 +53,14 @@ fn invalid_file_reports_located_errors() {
     let invalid = repo_root().join("to_check/invalid/20250121_NOFIRMA_PAIN00100109_1.xml");
 
     assert!(xsd.exists(), "missing xsd fixture: {}", xsd.display());
-    assert!(invalid.exists(), "missing invalid fixture: {}", invalid.display());
+    assert!(
+        invalid.exists(),
+        "missing invalid fixture: {}",
+        invalid.display()
+    );
 
     let mut sp = SchemaParserContext::from_file(xsd.to_str().unwrap());
-    let mut validator = SchemaValidationContext::from_parser(&mut sp)
-        .expect("schema must compile");
+    let mut validator = SchemaValidationContext::from_parser(&mut sp).expect("schema must compile");
 
     let doc = Parser::default()
         .parse_file(invalid.to_str().unwrap())
