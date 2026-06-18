@@ -1,47 +1,98 @@
-# Svelte + TS + Vite
+# SEPA Validator — Desktop App (Tauri + Rust + Svelte)
 
-This template should help get you started developing with Svelte and TypeScript in Vite.
+A modern Windows desktop validator for SEPA payment XML files. It validates
+files against embedded ISO 20022 / GBIC XSD schemas using **libxml2**, and shows
+a live, clickable, filterable validation log.
 
-## Recommended IDE Setup
+- **Backend:** Rust (`src-tauri/`), XSD validation via the `libxml` crate (libxml2),
+  namespace detection via `quick-xml`. Results stream to the UI over a Tauri
+  `ipc::Channel` so the log fills in live during a run.
+- **Frontend:** Svelte 5 + TypeScript + Vite (`src/`), with a CodeMirror 6 XML
+  viewer that jumps to and highlights the offending line when you click an error.
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+## Features
 
-## Need an official Svelte framework?
+- Validate via file picker, folder picker, or drag & drop (folders are scanned recursively).
+- Live-streaming results list with status icons (✓ / ✗ / ⚠).
+- Click any error/warning to jump to its line in the XML viewer.
+- Filter the log by severity (errors / warnings / all) and full-text search.
+- System-aware light/dark theme with a manual toggle.
+- Export results as TXT or CSV.
 
-Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
+## Prerequisites (Windows)
 
-## Technical considerations
+This app links the native **libxml2** library, so first-time setup needs a few
+build tools. After this one-time setup, builds are fast.
 
-**Why use this over SvelteKit?**
+1. **Node.js** (18+) and **npm**.
+2. **Rust** (stable, MSVC toolchain) — https://rustup.rs.
+3. **Visual Studio Build Tools 2022** with the C++ workload (provides `link.exe`).
+4. **vcpkg + libxml2** (static lib, dynamic-CRT triplet):
+   ```sh
+   git clone --depth 1 https://github.com/microsoft/vcpkg "%USERPROFILE%\vcpkg"
+   "%USERPROFILE%\vcpkg\bootstrap-vcpkg.bat"
+   "%USERPROFILE%\vcpkg\vcpkg.exe" install libxml2:x64-windows-static-md
+   ```
+   (vcpkg downloads its own CMake/Ninja — a system CMake is not required.)
+5. **libclang** (the `libxml` crate runs bindgen). The lightest no-admin option
+   is the PyPI wheel:
+   ```sh
+   pip install libclang -t "%USERPROFILE%\libclang_pkg"
+   ```
+   This puts `libclang.dll` in `%USERPROFILE%\libclang_pkg\clang\native`.
+   (Alternatively install LLVM, which also provides `libclang.dll`.)
+6. **XSD schemas:** the ISO 20022 / GBIC `.xsd` files must be present in the
+   repo's `xml_schema/` directory at build time — they are **embedded into the
+   binary** at compile time (and are not redistributed; download from
+   iso20022.org / ebics.de). The build fails with a clear message if one is missing.
 
-- It brings its own routing solution which might not be preferable for some users.
-- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
+### Local build config (`src-tauri/.cargo/config.toml`)
 
-This template contains as little as possible to get started with Vite + TypeScript + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
+The build needs to know where vcpkg and libclang live. This is machine-specific,
+so it is **gitignored** — create `app/src-tauri/.cargo/config.toml` yourself:
 
-Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
-
-**Why `global.d.ts` instead of `compilerOptions.types` inside `jsconfig.json` or `tsconfig.json`?**
-
-Setting `compilerOptions.types` shuts out all other types not explicitly listed in the configuration. Using triple-slash references keeps the default TypeScript setting of accepting type information from the entire workspace, while also adding `svelte` and `vite/client` type information.
-
-**Why include `.vscode/extensions.json`?**
-
-Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
-
-**Why enable `allowJs` in the TS template?**
-
-While `allowJs: false` would indeed prevent the use of `.js` files in the project, it does not prevent the use of JavaScript syntax in `.svelte` files. In addition, it would force `checkJs: false`, bringing the worst of both worlds: not being able to guarantee the entire codebase is TypeScript, and also having worse typechecking for the existing JavaScript. In addition, there are valid use cases in which a mixed codebase may be relevant.
-
-**Why is HMR not preserving my local component state?**
-
-HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/rixo/svelte-hmr#svelte-hmr).
-
-If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
-
-```ts
-// store.ts
-// An extremely simple external store
-import { writable } from 'svelte/store'
-export default writable(0)
+```toml
+[env]
+VCPKG_ROOT = "C:/Users/<you>/vcpkg"
+VCPKGRS_TRIPLET = "x64-windows-static-md"
+LIBCLANG_PATH = "C:/Users/<you>/libclang_pkg/clang/native"
 ```
+
+(`bcrypt.lib`, which libxml2 ≥ 2.15 needs for `BCryptGenRandom`, is linked
+automatically by `src-tauri/build.rs`.)
+
+## Develop & build
+
+```sh
+cd app
+npm install
+
+# Run in dev (opens the app window with hot-reload)
+npm run tauri dev
+
+# Type-check the frontend
+npm run check
+
+# Backend tests (validates against fixtures under ../to_check when present)
+cd src-tauri && cargo test
+
+# Production build — standalone exe (no installer)
+cd app && npx tauri build --no-bundle
+# -> app/src-tauri/target/release/app.exe
+
+# Production build with installers (NSIS/MSI)
+cd app && npx tauri build
+```
+
+## Architecture notes
+
+- `src-tauri/src/model.rs` — `ValidationResult` / `Status` / `Message` (serde DTOs).
+- `src-tauri/src/schema.rs` — namespace → XSD map; schemas embedded via `include_bytes!`.
+- `src-tauri/src/validator.rs` — `detect_namespace` (quick-xml) + `Validator` with a
+  per-run compiled-schema cache; maps libxml `StructuredError` to located messages.
+- `src-tauri/src/scanner.rs` — recursively expands files/folders to `.xml` paths.
+- `src-tauri/src/commands.rs` — `start_validation` (streams `ValidationEvent`s over a
+  Channel from a worker thread, since libxml types are not `Send`), `read_file`,
+  `write_text_file`.
+- `src/lib/` — `api.ts` (typed invoke wrappers), `stores.ts`, and the components
+  (`Toolbar`, `FileList`, `CodeViewer`, `LogPanel`, `SummaryBar`).

@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SEPA XML Validator — a native Windows GUI tool (PowerShell/WinForms) that validates SEPA payment XML files against ISO 20022 XSD schemas. Also serves as a local data curation workspace for triaging XML payment files.
+SEPA XML Validator — validates SEPA payment XML files against ISO 20022 XSD schemas. Also serves as a local data curation workspace for triaging XML payment files.
+
+There are two GUIs: the original **PowerShell/WinForms** tool (`windows/`) and a newer **Tauri + Rust + Svelte** desktop app (`app/`, Windows-only for now) with a live, clickable, filterable validation log. Bash CLI scripts (`scripts/`) cover batch validation and renaming.
 
 ## Key Commands
 
@@ -18,6 +20,15 @@ cd windows
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 # Output: windows/dist/SEPA-Validator.exe
 ```
+
+### Tauri/Rust App (on Windows) — `app/`
+```sh
+cd app && npm install
+npm run tauri dev                  # run with hot-reload
+cd src-tauri && cargo test         # backend tests (15 unit + 2 spike)
+cd app && npx tauri build --no-bundle   # standalone exe -> src-tauri/target/release/app.exe
+```
+First-time native setup (vcpkg+libxml2, libclang, local `.cargo/config.toml`) is in `app/README.md`.
 
 ### CLI validation (Linux/macOS/WSL)
 ```bash
@@ -40,6 +51,15 @@ Single-file PowerShell WinForms application. Key sections in order:
 2. **Validation engine** — `Get-XmlNamespace` reads the first element's namespace. `Test-SepaXml` does full XSD validation via .NET `System.Xml.Schema.XmlSchemaSet`. Schema compilation is cached per-namespace in `$script:SchemaCache`.
 3. **GUI** — WinForms controls with docked layout. Controls are added to the form in reverse dock-priority order (last added = docks first).
 4. **Event handlers** — Drag & drop, file/folder dialogs, grid selection, export.
+
+### Tauri/Rust App (`app/`)
+
+Tauri v2 backend (Rust, `src-tauri/`) + Svelte 5/TypeScript/Vite frontend (`src/`).
+
+- **Backend modules** (`src-tauri/src/`): `model` (serde DTOs `ValidationResult`/`Status`/`Message`), `schema` (namespace→XSD map, schemas embedded via `include_bytes!`), `validator` (`detect_namespace` via quick-xml + `Validator` with a per-run compiled-schema cache, mapping libxml `StructuredError` to located messages), `scanner` (recursive `.xml` expansion), `commands` (`start_validation`, `read_file`, `write_text_file`).
+- **Live streaming**: `start_validation` runs on a worker thread (libxml types are not `Send`) and streams `ValidationEvent`s (started/result/finished) to the frontend over a `tauri::ipc::Channel`.
+- **XSD engine**: validation is done by **libxml2** (the `libxml` crate), not .NET — error wording differs from the PowerShell tool but verdicts are equivalent.
+- **Native build deps** (one-time, documented in `app/README.md`): vcpkg `libxml2:x64-windows-static-md`, `libclang` (PyPI wheel) for bindgen, and a **gitignored** `src-tauri/.cargo/config.toml` with `[env]` (`VCPKG_ROOT`, `VCPKGRS_TRIPLET`, `LIBCLANG_PATH`). `build.rs` links `bcrypt` (libxml2 ≥ 2.15 needs `BCryptGenRandom`) and verifies the mapped XSDs exist in `xml_schema/`.
 
 ### Critical implementation constraints (PowerShell 5.1 / WinForms)
 
