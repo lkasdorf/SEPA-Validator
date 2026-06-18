@@ -7,6 +7,7 @@ use quick_xml::events::Event;
 use quick_xml::name::ResolveResult;
 use quick_xml::reader::NsReader;
 
+use crate::formatting::format_xml;
 use crate::model::{Message, Severity, Status, ValidationResult};
 use crate::schema;
 
@@ -150,7 +151,27 @@ impl Validator {
         }
         let validator = self.cache.get_mut(schema_name).unwrap();
 
-        let doc = match Parser::default().parse_file(&path_str) {
+        // Format first, then validate the formatted text so that libxml's
+        // reported line/col numbers match what the viewer shows (`read_formatted`).
+        let formatted = match format_xml(path) {
+            Ok(s) => s,
+            Err(e) => {
+                return mk(
+                    ns.clone(),
+                    schema_name.to_string(),
+                    vec![Message {
+                        severity: Severity::Error,
+                        text: format!("XML parse error: {e}"),
+                        line: None,
+                        column: None,
+                    }],
+                    Status::Error,
+                    1,
+                    0,
+                )
+            }
+        };
+        let doc = match Parser::default().parse_string(&formatted) {
             Ok(d) => d,
             Err(e) => {
                 return mk(
@@ -290,5 +311,28 @@ mod tests {
             r.messages.iter().any(|m| m.line.is_some()),
             "expect at least one located error"
         );
+    }
+
+    #[test]
+    fn invalid_fixture_lines_point_into_formatted_text() {
+        let f = repo_root().join("to_check/invalid/20250121_NOFIRMA_PAIN00100109_1.xml");
+        if !f.exists() {
+            eprintln!("SKIP: fixture absent");
+            return;
+        }
+        let formatted = crate::formatting::format_xml(&f).unwrap();
+        let line_count = formatted.lines().count() as u32;
+        let mut v = super::Validator::new();
+        let r = v.validate_file(&f);
+        assert_eq!(r.status, Status::Invalid);
+        for m in r.messages.iter() {
+            if let Some(line) = m.line {
+                assert!(
+                    line >= 1 && line <= line_count,
+                    "error line {line} outside formatted text (1..={line_count})"
+                );
+            }
+        }
+        assert!(r.messages.iter().any(|m| m.line.is_some()));
     }
 }
