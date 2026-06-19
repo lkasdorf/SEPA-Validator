@@ -1,5 +1,5 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
-import type { ValidationEvent, ValidationResult } from "./types";
+import type { ValidationEvent, ValidationResult, PaymentSummary } from "./types";
 
 /** Start validation; `onEvent` is called for each streamed event in order. */
 export async function startValidation(
@@ -17,6 +17,10 @@ export function readFile(path: string): Promise<string> {
 
 export function readFormatted(path: string): Promise<string> {
   return invoke<string>("read_formatted", { path });
+}
+
+export function readPaymentSummary(path: string): Promise<PaymentSummary> {
+  return invoke<PaymentSummary>("read_payment_summary", { path });
 }
 
 export function writeTextFile(path: string, contents: string): Promise<void> {
