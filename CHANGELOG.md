@@ -21,10 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clicking an error scrolls its line to the center of the viewer and highlights it with a brief flash.
 - Search within the open XML — `Ctrl+F` or a **Search** button opens a find panel that highlights matches and steps through them (next/previous).
 - Collapse XML blocks in the viewer — fold arrows in the gutter fold individual elements, plus **Collapse all** / **Expand all** buttons.
-- Per-file payment overview — a new **Übersicht** tab lists every remittance info (`Ustrd`) in document order and shows a `PmtInf` statistics table (block count, `NbOfTxs`, `CtrlSum`, `SvcLvl/Cd`, execution/collection date) for pain.001 and pain.008.
+- Per-file payment overview in an **Übersicht** tab: a creditor (`Cdtr`) block (name, IBAN, BIC, creditor identifier) and a `PmtInf` statistics table (block count, `NbOfTxs`, `CtrlSum`, `SvcLvl/Cd`, `LclInstrm`, `SeqTp`, execution/collection date) for pain.001 and pain.008.
+- **Verwendungszweck** tab: one entry per transaction with its remittance info (`Ustrd`), and a warning banner plus a red marker for any transaction whose purpose is empty or missing.
 
 ### Changed
 - XSD validation engine moved from .NET (`System.Xml.Schema`) to **libxml2** (Rust `libxml` crate). Valid/invalid verdicts are equivalent; error message wording differs.
+
+### Fixed
+- Switching from the Übersicht tab back to the XML tab no longer leaves the XML viewer empty (the viewer is kept mounted instead of being recreated).
 
 ## [1.0.0] - 2026-03-24
 
