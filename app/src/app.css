@@ -18,5 +18,11 @@ body { font: 14px "Segoe UI", system-ui, sans-serif; background: var(--bg); colo
 .viewer-bar button { background: var(--accent); color: #fff; border: none; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
 .viewer-bar button:hover:not(:disabled) { filter: brightness(1.1); }
 .viewer-bar button:disabled { opacity: 0.45; cursor: default; }
+.viewer-bar .viewer-tabs { display: flex; gap: 0; margin-right: 6px; }
+.viewer-bar .viewer-tabs button { background: transparent; color: var(--fg); border: 1px solid var(--border); border-radius: 0; }
+.viewer-bar .viewer-tabs button:first-child { border-radius: 6px 0 0 6px; }
+.viewer-bar .viewer-tabs button:last-child { border-radius: 0 6px 6px 0; border-left: none; }
+.viewer-bar .viewer-tabs button.active { background: var(--accent); color: #fff; }
+.summary { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .gutter { background: var(--border); cursor: col-resize; }
 .gutter:hover { background: var(--accent); }

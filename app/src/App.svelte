@@ -2,9 +2,12 @@
   import Toolbar from "./lib/Toolbar.svelte";
   import FileList from "./lib/FileList.svelte";
   import CodeViewer from "./lib/CodeViewer.svelte";
+  import SummaryView from "./lib/SummaryView.svelte";
   import LogPanel from "./lib/LogPanel.svelte";
   import SummaryBar from "./lib/SummaryBar.svelte";
   import { selectedResult, openViewerSearch, foldAllInViewer, unfoldAllInViewer } from "./lib/stores";
+
+  let viewerTab: "xml" | "summary" = "xml";
 
   let leftWidth = 260;
   let rightWidth = 360;
@@ -43,11 +46,21 @@
     <div class="gutter" role="separator" aria-orientation="vertical" on:mousedown={(e) => startDrag("left", e)}></div>
     <section class="viewer">
       <div class="viewer-bar">
-        <button on:click={() => $openViewerSearch()} disabled={!$selectedResult}>Search</button>
-        <button on:click={() => $foldAllInViewer()} disabled={!$selectedResult}>Collapse all</button>
-        <button on:click={() => $unfoldAllInViewer()} disabled={!$selectedResult}>Expand all</button>
+        <div class="viewer-tabs">
+          <button class:active={viewerTab === "xml"} on:click={() => (viewerTab = "xml")}>XML</button>
+          <button class:active={viewerTab === "summary"} on:click={() => (viewerTab = "summary")}>Übersicht</button>
+        </div>
+        {#if viewerTab === "xml"}
+          <button on:click={() => $openViewerSearch()} disabled={!$selectedResult}>Search</button>
+          <button on:click={() => $foldAllInViewer()} disabled={!$selectedResult}>Collapse all</button>
+          <button on:click={() => $unfoldAllInViewer()} disabled={!$selectedResult}>Expand all</button>
+        {/if}
       </div>
-      <CodeViewer />
+      {#if viewerTab === "xml"}
+        <CodeViewer />
+      {:else}
+        <SummaryView />
+      {/if}
     </section>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div class="gutter" role="separator" aria-orientation="vertical" on:mousedown={(e) => startDrag("right", e)}></div>
