@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 use tauri::ipc::Channel;
+use tauri::{AppHandle, Manager};
 
 use crate::model::ValidationResult;
 use crate::scanner;
@@ -22,17 +23,29 @@ pub enum ValidationEvent {
     },
 }
 
+/// The per-user directory that holds imported XSD schema files (created if missing).
+pub fn schema_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("schemas");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
 /// Expand inputs, then validate each file on a worker thread, streaming
 /// results to the frontend in order via the channel.
 #[tauri::command]
-pub fn start_validation(paths: Vec<String>, on_event: Channel<ValidationEvent>) {
+pub fn start_validation(app: AppHandle, paths: Vec<String>, on_event: Channel<ValidationEvent>) {
     let files: Vec<PathBuf> = scanner::expand_paths(paths.iter().map(PathBuf::from));
     let total = files.len();
+    let dir = schema_dir(&app).unwrap_or_default();
 
     // libxml types are not Send: build the Validator inside the thread.
     std::thread::spawn(move || {
         let _ = on_event.send(ValidationEvent::Started { total });
-        let mut validator = Validator::new();
+        let mut validator = Validator::new(dir);
         for (index, file) in files.iter().enumerate() {
             let result = validator.validate_file(file);
             let _ = on_event.send(ValidationEvent::Result { index, result });
