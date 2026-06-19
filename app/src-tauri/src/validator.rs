@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use libxml::parser::Parser;
 use libxml::schemas::{SchemaParserContext, SchemaValidationContext};
@@ -31,18 +31,15 @@ pub fn detect_namespace(path: &Path) -> Option<String> {
 /// Holds a per-run cache of compiled schemas. Not Send (wraps libxml2 pointers):
 /// construct and use it on a single worker thread.
 pub struct Validator {
+    schema_dir: PathBuf,
     cache: HashMap<&'static str, SchemaValidationContext>,
 }
 
-impl Default for Validator {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Validator {
-    pub fn new() -> Self {
+    /// `schema_dir` holds the imported XSD files looked up by filename.
+    pub fn new(schema_dir: PathBuf) -> Self {
         Self {
+            schema_dir,
             cache: HashMap::new(),
         }
     }
@@ -108,8 +105,8 @@ impl Validator {
             }
         };
 
-        let (schema_name, _bytes) = match schema::lookup(&ns) {
-            Some(v) => v,
+        let schema_name = match schema::lookup(&ns) {
+            Some(name) => name,
             None => {
                 return mk(
                     ns.clone(),
@@ -126,6 +123,22 @@ impl Validator {
                 )
             }
         };
+
+        if !self.schema_dir.join(schema_name).exists() {
+            return mk(
+                ns.clone(),
+                schema_name.to_string(),
+                vec![Message {
+                    severity: Severity::Warning,
+                    text: format!("Schema '{schema_name}' not imported. Open Schemas… to import it."),
+                    line: None,
+                    column: None,
+                }],
+                Status::NoSchema,
+                0,
+                1,
+            );
+        }
 
         if !self.cache.contains_key(schema_name) {
             match self.compile(&ns) {
@@ -199,8 +212,10 @@ impl Validator {
     }
 
     fn compile(&self, namespace: &str) -> Result<SchemaValidationContext, String> {
-        let (_name, bytes) = schema::lookup(namespace).ok_or("schema not found")?;
-        let mut parser = SchemaParserContext::from_buffer(bytes);
+        let filename = schema::lookup(namespace).ok_or("schema not found")?;
+        let path = self.schema_dir.join(filename);
+        let path_str = path.to_str().ok_or("schema path is not valid UTF-8")?;
+        let mut parser = SchemaParserContext::from_file(path_str);
         SchemaValidationContext::from_parser(&mut parser)
             .map_err(|errs| format!("Failed to load schema: {} error(s)", errs.len()))
     }
@@ -273,10 +288,15 @@ mod tests {
             .join("..")
     }
 
+    /// Local XSD directory (never committed); tests that compile schemas skip if absent.
+    fn test_schema_dir() -> std::path::PathBuf {
+        repo_root().join("xml_schema")
+    }
+
     #[test]
     fn unknown_namespace_yields_no_schema() {
         let p = temp_xml(r#"<?xml version="1.0"?><Doc xmlns="urn:made:up"><X/></Doc>"#);
-        let mut v = super::Validator::new();
+        let mut v = super::Validator::new(test_schema_dir());
         let r = v.validate_file(&p);
         assert_eq!(r.status, Status::NoSchema);
         assert_eq!(r.namespace, "urn:made:up");
@@ -287,11 +307,11 @@ mod tests {
         let f = repo_root().join(
             "to_check/valid/20250410_ENRW_ENERGIEVERSORGUNG_ROTTWEIL_GMBH_CO_KG_PAIN00800102.xml",
         );
-        if !f.exists() {
-            eprintln!("SKIP: fixture absent");
+        if !f.exists() || !test_schema_dir().exists() {
+            eprintln!("SKIP: fixture or schema dir absent");
             return;
         }
-        let mut v = super::Validator::new();
+        let mut v = super::Validator::new(test_schema_dir());
         let r = v.validate_file(&f);
         assert_eq!(r.status, Status::Ok, "messages: {:?}", r.messages);
     }
@@ -299,11 +319,11 @@ mod tests {
     #[test]
     fn invalid_fixture_reports_errors() {
         let f = repo_root().join("to_check/invalid/20250121_NOFIRMA_PAIN00100109_1.xml");
-        if !f.exists() {
-            eprintln!("SKIP: fixture absent");
+        if !f.exists() || !test_schema_dir().exists() {
+            eprintln!("SKIP: fixture or schema dir absent");
             return;
         }
-        let mut v = super::Validator::new();
+        let mut v = super::Validator::new(test_schema_dir());
         let r = v.validate_file(&f);
         assert_eq!(r.status, Status::Invalid);
         assert!(r.errors >= 1);
@@ -316,13 +336,13 @@ mod tests {
     #[test]
     fn invalid_fixture_lines_point_into_formatted_text() {
         let f = repo_root().join("to_check/invalid/20250121_NOFIRMA_PAIN00100109_1.xml");
-        if !f.exists() {
-            eprintln!("SKIP: fixture absent");
+        if !f.exists() || !test_schema_dir().exists() {
+            eprintln!("SKIP: fixture or schema dir absent");
             return;
         }
         let formatted = crate::formatting::format_xml(&f).unwrap();
         let line_count = formatted.lines().count() as u32;
-        let mut v = super::Validator::new();
+        let mut v = super::Validator::new(test_schema_dir());
         let r = v.validate_file(&f);
         assert_eq!(r.status, Status::Invalid);
         for m in r.messages.iter() {
