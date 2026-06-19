@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { EditorState, StateEffect, StateField, RangeSetBuilder } from "@codemirror/state";
-  import { EditorView, lineNumbers, Decoration, type DecorationSet } from "@codemirror/view";
+  import { EditorView, lineNumbers, keymap, Decoration, type DecorationSet } from "@codemirror/view";
   import { xml } from "@codemirror/lang-xml";
   import { oneDark } from "@codemirror/theme-one-dark";
+  import { search, searchKeymap, highlightSelectionMatches, openSearchPanel } from "@codemirror/search";
   import { selectedResult, jumpToLine } from "./stores";
   import { readFormatted } from "./api";
 
@@ -61,7 +62,13 @@
       parent: host,
       state: EditorState.create({
         doc: "",
-        extensions: [lineNumbers(), xml(), oneDark, errorField, activeLineField, EditorView.editable.of(false),
+        extensions: [lineNumbers(), xml(), oneDark,
+          highlightSelectionMatches(),
+          search({ top: true }),
+          keymap.of(searchKeymap),
+          errorField, activeLineField,
+          EditorView.editable.of(false),
+          EditorState.readOnly.of(true),
           EditorView.theme({
             ".cm-error-line": { backgroundColor: "rgba(244,71,71,0.18)" },
             ".cm-active-error-line": {
