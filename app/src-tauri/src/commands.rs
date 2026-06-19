@@ -66,3 +66,9 @@ pub fn read_formatted(path: String) -> Result<String, String> {
             .map_err(|e| e.to_string()),
     }
 }
+
+/// Extract the per-file SEPA payment summary (PmtInf stats + Ustrd list).
+#[tauri::command]
+pub fn read_payment_summary(path: String) -> Result<crate::payments::PaymentSummary, String> {
+    crate::payments::extract_payment_summary(std::path::Path::new(&path))
+}
