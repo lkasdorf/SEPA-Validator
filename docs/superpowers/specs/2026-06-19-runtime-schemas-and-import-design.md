@@ -54,8 +54,9 @@ entfernen. `cargo:rustc-link-lib=dylib=bcrypt` und `tauri_build::build()` bleibe
   - `Some(filename)`: existiert `schema_dir/filename` **nicht** → `no_schema`
     „Schema `<filename>` nicht importiert (Schemas… → Importieren)". Sonst kompilieren
     (Cache-Key bleibt der `&'static`-Dateiname).
-- `compile(ns)`: `let path = self.schema_dir.join(filename); let bytes =
-  std::fs::read(path).map_err(...)?; SchemaParserContext::from_buffer(&bytes); …`.
+- `compile(ns)`: `let path = self.schema_dir.join(filename); let mut parser =
+  SchemaParserContext::from_file(path.to_str()?); …` (uses `from_file`, the pattern
+  proven by `tests/spike.rs` — avoids a buffer-lifetime question).
 
 **Commands** (`commands.rs`, registriert in `lib.rs` `generate_handler!`):
 - `start_validation(app: AppHandle, paths, on_event)` — neu mit `app`; löst
