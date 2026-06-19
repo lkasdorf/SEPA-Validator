@@ -34,3 +34,17 @@ export function statusLabel(r: ValidationResult): string {
     case "invalid": return `INVALID (${r.errors} errors, ${r.warnings} warnings)`;
   }
 }
+
+export interface PmtInfSummary {
+  nbOfTxs: string | null;
+  ctrlSum: string | null;
+  svcLvlCd: string | null;
+  reqdDate: string | null;
+}
+
+export interface PaymentSummary {
+  messageType: string;
+  pmtInfCount: number;
+  blocks: PmtInfSummary[];
+  ustrd: string[];
+}
