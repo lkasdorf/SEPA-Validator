@@ -51,6 +51,7 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
     let mut current: Option<PmtInfSummary> = None;
 
     loop {
+        buf.clear();
         match reader.read_event_into(&mut buf).map_err(|e| e.to_string())? {
             Event::Start(e) => {
                 let name = local_of(e.name().as_ref());
@@ -71,7 +72,6 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
             Event::Text(t) => {
                 let in_pmt_inf = stack.iter().any(|s| s == "PmtInf");
                 if !in_pmt_inf {
-                    buf.clear();
                     continue;
                 }
                 if let Some(b) = current.as_mut() {
@@ -103,7 +103,6 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
             Event::Eof => break,
             _ => {}
         }
-        buf.clear();
     }
 
     Ok(PaymentSummary {
