@@ -1,17 +1,21 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { EditorState, StateEffect, StateField, RangeSetBuilder } from "@codemirror/state";
+  import { EditorState, StateEffect, StateField, RangeSetBuilder, Compartment } from "@codemirror/state";
   import { EditorView, lineNumbers, keymap, Decoration, type DecorationSet } from "@codemirror/view";
   import { xml } from "@codemirror/lang-xml";
   import { oneDark } from "@codemirror/theme-one-dark";
   import { search, searchKeymap, highlightSelectionMatches, openSearchPanel } from "@codemirror/search";
   import { codeFolding, foldGutter, foldKeymap, foldAll, unfoldAll } from "@codemirror/language";
-  import { selectedResult, jumpToLine, openViewerSearch, foldAllInViewer, unfoldAllInViewer } from "./stores";
+  import { selectedResult, jumpToLine, openViewerSearch, foldAllInViewer, unfoldAllInViewer, viewerLarge } from "./stores";
   import { readFormatted } from "./api";
 
   let host: HTMLDivElement;
   let view: EditorView | null = null;
   let currentPath = "";
+
+  const HEAVY_LIMIT = 10 * 1024 * 1024;
+  const heavyComp = new Compartment();
+  const HEAVY = [xml(), foldGutter(), codeFolding(), highlightSelectionMatches()];
 
   // Decoration to highlight error lines.
   const setErrorLines = StateEffect.define<number[]>();
@@ -63,9 +67,7 @@
       parent: host,
       state: EditorState.create({
         doc: "",
-        extensions: [lineNumbers(), foldGutter(), xml(), oneDark,
-          codeFolding(),
-          highlightSelectionMatches(),
+        extensions: [lineNumbers(), heavyComp.of(HEAVY), oneDark,
           search({ top: true }),
           keymap.of([...searchKeymap, ...foldKeymap]),
           errorField, activeLineField,
@@ -101,7 +103,12 @@
       currentPath = path;
       let text = "";
       try { text = await readFormatted(path); } catch { text = "(could not read file)"; }
-      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+      const large = text.length > HEAVY_LIMIT;
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: text },
+        effects: heavyComp.reconfigure(large ? [] : HEAVY),
+      });
+      viewerLarge.set(large);
     }
     view.dispatch({ effects: [setErrorLines.of(errorLines ?? []), setActiveLine.of(null)] });
   }
