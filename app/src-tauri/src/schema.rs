@@ -20,7 +20,6 @@ pub fn lookup(namespace: &str) -> Option<&'static str> {
 }
 
 /// All known (namespace, filename) pairs, for the schema-status UI.
-#[allow(dead_code)]
 pub fn known_schemas() -> &'static [(&'static str, &'static str)] {
     SCHEMAS
 }
