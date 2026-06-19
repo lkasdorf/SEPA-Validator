@@ -4,6 +4,7 @@
   import CodeViewer from "./lib/CodeViewer.svelte";
   import LogPanel from "./lib/LogPanel.svelte";
   import SummaryBar from "./lib/SummaryBar.svelte";
+  import { selectedResult, openViewerSearch, foldAllInViewer, unfoldAllInViewer } from "./lib/stores";
 
   let leftWidth = 260;
   let rightWidth = 360;
@@ -40,7 +41,14 @@
     <aside class="files"><FileList /></aside>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div class="gutter" role="separator" aria-orientation="vertical" on:mousedown={(e) => startDrag("left", e)}></div>
-    <section class="viewer"><CodeViewer /></section>
+    <section class="viewer">
+      <div class="viewer-bar">
+        <button on:click={() => $openViewerSearch()} disabled={!$selectedResult}>Search</button>
+        <button on:click={() => $foldAllInViewer()} disabled={!$selectedResult}>Collapse all</button>
+        <button on:click={() => $unfoldAllInViewer()} disabled={!$selectedResult}>Expand all</button>
+      </div>
+      <CodeViewer />
+    </section>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div class="gutter" role="separator" aria-orientation="vertical" on:mousedown={(e) => startDrag("right", e)}></div>
     <section class="log"><LogPanel /></section>

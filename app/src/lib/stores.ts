@@ -25,3 +25,6 @@ export const summary = derived(results, ($r) => ({
 }));
 
 export const jumpToLine = writable<(line: number) => void>(() => {});
+export const openViewerSearch = writable<() => void>(() => {});
+export const foldAllInViewer = writable<() => void>(() => {});
+export const unfoldAllInViewer = writable<() => void>(() => {});
