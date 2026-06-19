@@ -6,8 +6,10 @@
   import LogPanel from "./lib/LogPanel.svelte";
   import SummaryBar from "./lib/SummaryBar.svelte";
   import { selectedResult, openViewerSearch, foldAllInViewer, unfoldAllInViewer } from "./lib/stores";
+  import { loadPaymentSummary } from "./lib/paymentSummary";
 
   let viewerTab: "xml" | "summary" = "xml";
+  $: if (viewerTab !== "xml") loadPaymentSummary($selectedResult?.path);
 
   let leftWidth = 260;
   let rightWidth = 360;
@@ -56,11 +58,8 @@
           <button on:click={() => $unfoldAllInViewer()} disabled={!$selectedResult}>Expand all</button>
         {/if}
       </div>
-      {#if viewerTab === "xml"}
-        <CodeViewer />
-      {:else}
-        <SummaryView />
-      {/if}
+      <div class="viewer-pane" class:hidden={viewerTab !== "xml"}><CodeViewer /></div>
+      {#if viewerTab === "summary"}<SummaryView />{/if}
     </section>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div class="gutter" role="separator" aria-orientation="vertical" on:mousedown={(e) => startDrag("right", e)}></div>

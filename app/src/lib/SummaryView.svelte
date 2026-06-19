@@ -1,78 +1,57 @@
 <script lang="ts">
   import { selectedResult } from "./stores";
-  import { readPaymentSummary } from "./api";
-  import type { PaymentSummary } from "./types";
-
-  let summary: PaymentSummary | null = null;
-  let error = "";
-  let loadedPath = "";
-
-  $: void load($selectedResult?.path);
-
-  async function load(path: string | undefined) {
-    if (!path) {
-      summary = null;
-      error = "";
-      loadedPath = "";
-      return;
-    }
-    if (path === loadedPath) return;
-    loadedPath = path;
-    error = "";
-    summary = null;
-    try {
-      summary = await readPaymentSummary(path);
-    } catch {
-      summary = null;
-      error = "Datei konnte nicht als XML gelesen werden.";
-    }
-  }
+  import { paymentSummary } from "./paymentSummary";
+  $: ps = $paymentSummary;
 </script>
 
 <div class="summary">
   {#if !$selectedResult}
     <p class="muted">Keine Datei ausgewählt.</p>
-  {:else if error}
-    <p class="muted">{error}</p>
-  {:else if !summary}
-    <p class="muted">Lädt…</p>
-  {:else}
+  {:else if ps.state === "error"}
+    <p class="muted">Datei konnte nicht als XML gelesen werden.</p>
+  {:else if ps.state === "ready" && ps.data}
+    {@const data = ps.data}
+    {#if data.creditor}
+      <h3>Gläubiger (Cdtr)</h3>
+      <dl class="cdtr">
+        <dt>Name</dt><dd>{data.creditor.name ?? "—"}</dd>
+        <dt>IBAN</dt><dd>{data.creditor.iban ?? "—"}</dd>
+        <dt>BIC</dt><dd>{data.creditor.bic ?? "—"}</dd>
+        <dt>Gläubiger-ID</dt><dd>{data.creditor.creditorId ?? "—"}</dd>
+      </dl>
+    {/if}
     <h3>
-      {summary.pmtInfCount} PmtInf-{summary.pmtInfCount === 1 ? "Block" : "Blöcke"}{summary.messageType
-        ? ` · ${summary.messageType}`
+      {data.pmtInfCount} PmtInf-{data.pmtInfCount === 1 ? "Block" : "Blöcke"}{data.messageType
+        ? ` · ${data.messageType}`
         : ""}
     </h3>
-    {#if summary.blocks.length === 0}
+    {#if data.blocks.length === 0}
       <p class="muted">Keine Zahlungsblöcke in dieser Datei.</p>
     {:else}
       <table>
         <thead>
-          <tr><th>#</th><th>NbOfTxs</th><th>CtrlSum</th><th>SvcLvl/Cd</th><th>Datum</th></tr>
+          <tr>
+            <th>#</th><th>NbOfTxs</th><th>CtrlSum</th><th>SvcLvl/Cd</th>
+            <th>LclInstrm</th><th>SeqTp</th><th>Datum</th>
+          </tr>
         </thead>
         <tbody>
-          {#each summary.blocks as b, i}
+          {#each data.blocks as b, i}
             <tr>
               <td>{i + 1}</td>
               <td>{b.nbOfTxs ?? "—"}</td>
               <td>{b.ctrlSum ?? "—"}</td>
               <td>{b.svcLvlCd ?? "—"}</td>
+              <td>{b.lclInstrm ?? "—"}</td>
+              <td>{b.seqTp ?? "—"}</td>
               <td>{b.reqdDate ?? "—"}</td>
             </tr>
           {/each}
         </tbody>
       </table>
     {/if}
-
-    <h3>Verwendungszwecke (Ustrd)</h3>
-    {#if summary.ustrd.length === 0}
-      <p class="muted">Keine Verwendungszwecke.</p>
-    {:else}
-      <ol class="ustrd">
-        {#each summary.ustrd as u}
-          <li>{u}</li>
-        {/each}
-      </ol>
-    {/if}
+  {:else}
+    <p class="muted">Lädt…</p>
   {/if}
 </div>
 
@@ -84,6 +63,7 @@
   table { border-collapse: collapse; width: 100%; font-size: 12px; }
   th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); }
   th { font-weight: 600; }
-  ol.ustrd { margin: 0; padding-left: 22px; font-size: 13px; }
-  ol.ustrd li { padding: 2px 0; word-break: break-word; }
+  dl.cdtr { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0 0 6px; font-size: 12px; }
+  dl.cdtr dt { font-weight: 600; }
+  dl.cdtr dd { margin: 0; word-break: break-word; }
 </style>
