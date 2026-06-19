@@ -25,7 +25,10 @@ pub fn run() {
             commands::read_file,
             commands::write_text_file,
             commands::read_formatted,
-            commands::read_payment_summary
+            commands::read_payment_summary,
+            commands::schema_status,
+            commands::import_schemas,
+            commands::open_schema_dir
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
