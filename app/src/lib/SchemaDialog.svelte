@@ -47,6 +47,14 @@
   function close() {
     schemaDialogOpen.set(false);
   }
+
+  async function openFolder() {
+    try {
+      await openSchemaDir();
+    } catch {
+      note = "Ordner konnte nicht geöffnet werden.";
+    }
+  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
@@ -75,7 +83,7 @@
     <footer>
       <button on:click={importFiles} disabled={busy}>XSD-Dateien…</button>
       <button on:click={importFolder} disabled={busy}>Ordner…</button>
-      <button on:click={openSchemaDir}>Ordner öffnen</button>
+      <button on:click={openFolder}>Ordner öffnen</button>
       <button class="close" on:click={close}>Schließen</button>
     </footer>
   </div>

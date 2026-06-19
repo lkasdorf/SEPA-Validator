@@ -2,13 +2,11 @@
   import { onMount } from "svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
-  import { startValidation } from "./api";
-  import { results, selectedIndex, progress, theme } from "./stores";
+  import { startValidation, schemaStatus } from "./api";
+  import { results, selectedIndex, progress, theme, schemaDialogOpen } from "./stores";
   import type { ValidationEvent } from "./types";
   import { exportTxt, exportCsv } from "./export";
   import { get } from "svelte/store";
-  import { schemaDialogOpen } from "./stores";
-  import { schemaStatus } from "./api";
   function doExportTxt() { exportTxt(get(results)); }
   function doExportCsv() { exportCsv(get(results)); }
 
