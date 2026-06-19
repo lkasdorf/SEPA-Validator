@@ -5,6 +5,7 @@
   import { xml } from "@codemirror/lang-xml";
   import { oneDark } from "@codemirror/theme-one-dark";
   import { search, searchKeymap, highlightSelectionMatches, openSearchPanel } from "@codemirror/search";
+  import { codeFolding, foldGutter, foldKeymap, foldAll, unfoldAll } from "@codemirror/language";
   import { selectedResult, jumpToLine } from "./stores";
   import { readFormatted } from "./api";
 
@@ -62,10 +63,11 @@
       parent: host,
       state: EditorState.create({
         doc: "",
-        extensions: [lineNumbers(), xml(), oneDark,
+        extensions: [lineNumbers(), foldGutter(), xml(), oneDark,
+          codeFolding(),
           highlightSelectionMatches(),
           search({ top: true }),
-          keymap.of(searchKeymap),
+          keymap.of([...searchKeymap, ...foldKeymap]),
           errorField, activeLineField,
           EditorView.editable.of(false),
           EditorState.readOnly.of(true),
