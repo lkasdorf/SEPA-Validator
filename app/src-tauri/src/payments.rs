@@ -1,5 +1,5 @@
-//! Per-file SEPA payment summary: PmtInf block stats + flat Ustrd list.
-//! Read-only extraction with quick-xml; does not affect validation.
+//! Per-file SEPA payment summary: creditor + PmtInf block stats + per-transaction
+//! remittance info. Read-only extraction with quick-xml; does not affect validation.
 
 use std::path::Path;
 
@@ -11,11 +11,34 @@ use crate::validator::detect_namespace;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
+pub struct Creditor {
+    pub name: Option<String>,
+    pub iban: Option<String>,
+    pub bic: Option<String>,
+    pub creditor_id: Option<String>,
+}
+
+impl Creditor {
+    fn has_any(&self) -> bool {
+        self.name.is_some() || self.iban.is_some() || self.bic.is_some() || self.creditor_id.is_some()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct PmtInfSummary {
     pub nb_of_txs: Option<String>,
     pub ctrl_sum: Option<String>,
     pub svc_lvl_cd: Option<String>,
+    pub lcl_instrm: Option<String>,
+    pub seq_tp: Option<String>,
     pub reqd_date: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RemittanceEntry {
+    pub ustrd: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -23,8 +46,9 @@ pub struct PmtInfSummary {
 pub struct PaymentSummary {
     pub message_type: String,
     pub pmt_inf_count: u32,
+    pub creditor: Option<Creditor>,
     pub blocks: Vec<PmtInfSummary>,
-    pub ustrd: Vec<String>,
+    pub transactions: Vec<RemittanceEntry>,
 }
 
 /// Local element name (namespace prefix stripped) as an owned String.
@@ -47,57 +71,105 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
     let mut buf = Vec::new();
     let mut stack: Vec<String> = Vec::new();
     let mut blocks: Vec<PmtInfSummary> = Vec::new();
-    let mut ustrd: Vec<String> = Vec::new();
+    let mut transactions: Vec<RemittanceEntry> = Vec::new();
     let mut current: Option<PmtInfSummary> = None;
+    let mut current_creditor = Creditor::default();
+    let mut creditor: Option<Creditor> = None;
+    let mut current_tx: Option<Vec<String>> = None;
 
     loop {
         buf.clear();
         match reader.read_event_into(&mut buf).map_err(|e| e.to_string())? {
             Event::Start(e) => {
                 let name = local_of(e.name().as_ref());
-                if name == "PmtInf" {
-                    current = Some(PmtInfSummary::default());
+                match name.as_str() {
+                    "PmtInf" => {
+                        current = Some(PmtInfSummary::default());
+                        current_creditor = Creditor::default();
+                    }
+                    "CdtTrfTxInf" | "DrctDbtTxInf" => current_tx = Some(Vec::new()),
+                    _ => {}
                 }
                 stack.push(name);
             }
             Event::End(e) => {
                 let name = local_of(e.name().as_ref());
-                if name == "PmtInf" {
-                    if let Some(b) = current.take() {
-                        blocks.push(b);
+                match name.as_str() {
+                    "PmtInf" => {
+                        if let Some(b) = current.take() {
+                            blocks.push(b);
+                        }
+                        if creditor.is_none() && current_creditor.has_any() {
+                            creditor = Some(std::mem::take(&mut current_creditor));
+                        }
                     }
+                    "CdtTrfTxInf" | "DrctDbtTxInf" => {
+                        if let Some(tx) = current_tx.take() {
+                            let ustrd = if tx.is_empty() { None } else { Some(tx.join("\n")) };
+                            transactions.push(RemittanceEntry { ustrd });
+                        }
+                    }
+                    _ => {}
                 }
                 stack.pop();
             }
             Event::Text(t) => {
-                let in_pmt_inf = stack.iter().any(|s| s == "PmtInf");
-                if !in_pmt_inf {
+                if current.is_none() {
                     continue;
                 }
-                if let Some(b) = current.as_mut() {
-                    let top = stack.last().map(String::as_str).unwrap_or("");
-                    let parent = stack.iter().rev().nth(1).map(String::as_str).unwrap_or("");
-                    let grand = stack.iter().rev().nth(2).map(String::as_str).unwrap_or("");
-                    let text = t.unescape().map_err(|e| e.to_string())?.into_owned();
-                    match top {
-                        "NbOfTxs" if parent == "PmtInf" => {
-                            b.nb_of_txs.get_or_insert(text);
-                        }
-                        "CtrlSum" if parent == "PmtInf" => {
-                            b.ctrl_sum.get_or_insert(text);
-                        }
-                        "Cd" if parent == "SvcLvl" && grand == "PmtTpInf" => {
-                            b.svc_lvl_cd.get_or_insert(text);
-                        }
-                        "ReqdExctnDt" | "ReqdColltnDt" => {
-                            b.reqd_date.get_or_insert(text);
-                        }
-                        "Dt" | "DtTm" if parent == "ReqdExctnDt" || parent == "ReqdColltnDt" => {
-                            b.reqd_date.get_or_insert(text);
-                        }
-                        "Ustrd" => ustrd.push(text),
-                        _ => {}
+                let top = stack.last().map(String::as_str).unwrap_or("");
+                let parent = stack.iter().rev().nth(1).map(String::as_str).unwrap_or("");
+                let grand = stack.iter().rev().nth(2).map(String::as_str).unwrap_or("");
+                let text = t.unescape().map_err(|e| e.to_string())?.into_owned();
+                let b = current.as_mut().unwrap();
+                match top {
+                    "NbOfTxs" if parent == "PmtInf" => {
+                        b.nb_of_txs.get_or_insert(text);
                     }
+                    "CtrlSum" if parent == "PmtInf" => {
+                        b.ctrl_sum.get_or_insert(text);
+                    }
+                    "Cd" if parent == "SvcLvl" && grand == "PmtTpInf" => {
+                        b.svc_lvl_cd.get_or_insert(text);
+                    }
+                    "Cd" if parent == "LclInstrm" && grand == "PmtTpInf" => {
+                        b.lcl_instrm.get_or_insert(text);
+                    }
+                    "SeqTp" if parent == "PmtTpInf" => {
+                        b.seq_tp.get_or_insert(text);
+                    }
+                    "ReqdExctnDt" | "ReqdColltnDt" => {
+                        b.reqd_date.get_or_insert(text);
+                    }
+                    "Dt" | "DtTm" if parent == "ReqdExctnDt" || parent == "ReqdColltnDt" => {
+                        b.reqd_date.get_or_insert(text);
+                    }
+                    "Nm" if parent == "Cdtr" && current_tx.is_none() => {
+                        current_creditor.name.get_or_insert(text);
+                    }
+                    "IBAN" if parent == "Id" && grand == "CdtrAcct" && current_tx.is_none() => {
+                        current_creditor.iban.get_or_insert(text);
+                    }
+                    "BIC" | "BICFI"
+                        if parent == "FinInstnId" && grand == "CdtrAgt" && current_tx.is_none() =>
+                    {
+                        current_creditor.bic.get_or_insert(text);
+                    }
+                    "Id" if parent == "Othr"
+                        && current_tx.is_none()
+                        && stack.iter().any(|s| s == "CdtrSchmeId") =>
+                    {
+                        current_creditor.creditor_id.get_or_insert(text);
+                    }
+                    "Ustrd" => {
+                        if let Some(tx) = current_tx.as_mut() {
+                            let trimmed = text.trim();
+                            if !trimmed.is_empty() {
+                                tx.push(trimmed.to_string());
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
             Event::Eof => break,
@@ -108,8 +180,9 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
     Ok(PaymentSummary {
         message_type,
         pmt_inf_count: blocks.len() as u32,
+        creditor,
         blocks,
-        ustrd,
+        transactions,
     })
 }
 
@@ -136,8 +209,8 @@ mod tests {
       <CtrlSum>300.00</CtrlSum>
       <PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl></PmtTpInf>
       <ReqdExctnDt>2026-06-20</ReqdExctnDt>
-      <CdtTrfTxInf><RmtInf><Ustrd>Invoice 1</Ustrd></RmtInf></CdtTrfTxInf>
-      <CdtTrfTxInf><RmtInf><Ustrd>Invoice 2</Ustrd></RmtInf></CdtTrfTxInf>
+      <CdtTrfTxInf><Cdtr><Nm>Payee One</Nm></Cdtr><RmtInf><Ustrd>Invoice 1</Ustrd></RmtInf></CdtTrfTxInf>
+      <CdtTrfTxInf><Cdtr><Nm>Payee Two</Nm></Cdtr><RmtInf><Ustrd>Invoice 2</Ustrd></RmtInf></CdtTrfTxInf>
     </PmtInf>
     <PmtInf>
       <PmtInfId>P2</PmtInfId>
@@ -150,21 +223,78 @@ mod tests {
   </CstmrCdtTrfInitn>
 </Document>"#;
 
+    #[test]
+    fn pain001_blocks_transactions_and_no_pmtinf_creditor() {
+        let p = temp_xml("sepa_sum2_p001.xml", PAIN001);
+        let s = extract_payment_summary(&p).unwrap();
+        assert_eq!(s.message_type, "pain.001.001.03");
+        assert_eq!(s.pmt_inf_count, 2);
+        // PmtInf-level values, not GrpHdr (3 / 600.00).
+        assert_eq!(s.blocks[0].nb_of_txs.as_deref(), Some("2"));
+        assert_eq!(s.blocks[0].ctrl_sum.as_deref(), Some("300.00"));
+        assert_eq!(s.blocks[0].svc_lvl_cd.as_deref(), Some("SEPA"));
+        assert_eq!(s.blocks[0].lcl_instrm, None);
+        assert_eq!(s.blocks[0].seq_tp, None);
+        assert_eq!(s.blocks[0].reqd_date.as_deref(), Some("2026-06-20"));
+        // pain.001: Cdtr is per transaction, so there is NO PmtInf-level creditor.
+        assert_eq!(s.creditor, None);
+        // One entry per transaction, document order.
+        assert_eq!(s.transactions.len(), 3);
+        assert_eq!(s.transactions[0].ustrd.as_deref(), Some("Invoice 1"));
+        assert_eq!(s.transactions[1].ustrd.as_deref(), Some("Invoice 2"));
+        assert_eq!(s.transactions[2].ustrd.as_deref(), Some("Invoice 3"));
+    }
+
     const PAIN008: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.008.001.02">
   <CstmrDrctDbtInitn>
     <GrpHdr><MsgId>M2</MsgId></GrpHdr>
     <PmtInf>
-      <NbOfTxs>1</NbOfTxs>
-      <CtrlSum>50.00</CtrlSum>
-      <PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl></PmtTpInf>
+      <NbOfTxs>3</NbOfTxs>
+      <CtrlSum>150.00</CtrlSum>
+      <PmtTpInf>
+        <SvcLvl><Cd>SEPA</Cd></SvcLvl>
+        <LclInstrm><Cd>CORE</Cd></LclInstrm>
+        <SeqTp>RCUR</SeqTp>
+      </PmtTpInf>
       <ReqdColltnDt>2026-07-01</ReqdColltnDt>
-      <DrctDbtTxInf><RmtInf><Ustrd>Membership</Ustrd></RmtInf></DrctDbtTxInf>
+      <Cdtr><Nm>ACME GmbH</Nm></Cdtr>
+      <CdtrAcct><Id><IBAN>DE89370400440532013000</IBAN></Id></CdtrAcct>
+      <CdtrAgt><FinInstnId><BIC>COBADEFFXXX</BIC></FinInstnId></CdtrAgt>
+      <CdtrSchmeId><Id><PrvtId><Othr><Id>DE98ZZZ09999999999</Id></Othr></PrvtId></Id></CdtrSchmeId>
+      <DrctDbtTxInf><RmtInf><Ustrd>Beitrag Mai</Ustrd></RmtInf></DrctDbtTxInf>
+      <DrctDbtTxInf><RmtInf><Ustrd></Ustrd></RmtInf></DrctDbtTxInf>
+      <DrctDbtTxInf></DrctDbtTxInf>
     </PmtInf>
   </CstmrDrctDbtInitn>
 </Document>"#;
 
-    const PAIN001_09_NESTED: &str = r#"<?xml version="1.0"?>
+    #[test]
+    fn pain008_creditor_lclinstrm_seqtp_and_missing_empty_ustrd() {
+        let p = temp_xml("sepa_sum2_p008.xml", PAIN008);
+        let s = extract_payment_summary(&p).unwrap();
+        assert_eq!(s.message_type, "pain.008.001.02");
+        assert_eq!(s.pmt_inf_count, 1);
+        assert_eq!(s.blocks[0].lcl_instrm.as_deref(), Some("CORE"));
+        assert_eq!(s.blocks[0].seq_tp.as_deref(), Some("RCUR"));
+        assert_eq!(s.blocks[0].svc_lvl_cd.as_deref(), Some("SEPA"));
+        assert_eq!(s.blocks[0].reqd_date.as_deref(), Some("2026-07-01"));
+        let c = s.creditor.expect("creditor present");
+        assert_eq!(c.name.as_deref(), Some("ACME GmbH"));
+        assert_eq!(c.iban.as_deref(), Some("DE89370400440532013000"));
+        assert_eq!(c.bic.as_deref(), Some("COBADEFFXXX"));
+        assert_eq!(c.creditor_id.as_deref(), Some("DE98ZZZ09999999999"));
+        assert_eq!(s.transactions.len(), 3);
+        assert_eq!(s.transactions[0].ustrd.as_deref(), Some("Beitrag Mai"));
+        assert_eq!(s.transactions[1].ustrd, None); // empty <Ustrd></Ustrd>
+        assert_eq!(s.transactions[2].ustrd, None); // no RmtInf/Ustrd
+    }
+
+    #[test]
+    fn nested_reqd_exctn_dt_resolves_inner_date() {
+        let p = temp_xml(
+            "sepa_sum2_p009.xml",
+            r#"<?xml version="1.0"?>
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09">
   <CstmrCdtTrfInitn>
     <GrpHdr><MsgId>M3</MsgId></GrpHdr>
@@ -175,57 +305,30 @@ mod tests {
       <CdtTrfTxInf><RmtInf><Ustrd>Nested date</Ustrd></RmtInf></CdtTrfTxInf>
     </PmtInf>
   </CstmrCdtTrfInitn>
-</Document>"#;
-
-    #[test]
-    fn pain001_extracts_blocks_and_ustrd_in_order() {
-        let p = temp_xml("sepa_sum_p001.xml", PAIN001);
-        let s = extract_payment_summary(&p).unwrap();
-        assert_eq!(s.message_type, "pain.001.001.03");
-        assert_eq!(s.pmt_inf_count, 2);
-        assert_eq!(s.blocks.len(), 2);
-        // First block is PmtInf-level (2 / 300.00), NOT the GrpHdr (3 / 600.00).
-        assert_eq!(s.blocks[0].nb_of_txs.as_deref(), Some("2"));
-        assert_eq!(s.blocks[0].ctrl_sum.as_deref(), Some("300.00"));
-        assert_eq!(s.blocks[0].svc_lvl_cd.as_deref(), Some("SEPA"));
-        assert_eq!(s.blocks[0].reqd_date.as_deref(), Some("2026-06-20"));
-        assert_eq!(s.blocks[1].reqd_date.as_deref(), Some("2026-06-21"));
-        assert_eq!(s.ustrd, vec!["Invoice 1", "Invoice 2", "Invoice 3"]);
-    }
-
-    #[test]
-    fn pain008_uses_collection_date() {
-        let p = temp_xml("sepa_sum_p008.xml", PAIN008);
-        let s = extract_payment_summary(&p).unwrap();
-        assert_eq!(s.message_type, "pain.008.001.02");
-        assert_eq!(s.pmt_inf_count, 1);
-        assert_eq!(s.blocks[0].reqd_date.as_deref(), Some("2026-07-01"));
-        assert_eq!(s.blocks[0].svc_lvl_cd.as_deref(), Some("SEPA"));
-        assert_eq!(s.ustrd, vec!["Membership"]);
-    }
-
-    #[test]
-    fn nested_reqd_exctn_dt_resolves_inner_date() {
-        let p = temp_xml("sepa_sum_p009.xml", PAIN001_09_NESTED);
+</Document>"#,
+        );
         let s = extract_payment_summary(&p).unwrap();
         assert_eq!(s.blocks[0].reqd_date.as_deref(), Some("2026-08-15"));
+        assert_eq!(s.transactions.len(), 1);
+        assert_eq!(s.transactions[0].ustrd.as_deref(), Some("Nested date"));
     }
 
     #[test]
-    fn non_payment_doc_has_no_blocks() {
+    fn non_payment_doc_is_empty() {
         let p = temp_xml(
-            "sepa_sum_none.xml",
+            "sepa_sum2_none.xml",
             r#"<?xml version="1.0"?><Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.002.001.10"><CstmrPmtStsRpt><GrpHdr><MsgId>X</MsgId></GrpHdr></CstmrPmtStsRpt></Document>"#,
         );
         let s = extract_payment_summary(&p).unwrap();
         assert_eq!(s.pmt_inf_count, 0);
         assert!(s.blocks.is_empty());
-        assert!(s.ustrd.is_empty());
+        assert!(s.transactions.is_empty());
+        assert_eq!(s.creditor, None);
     }
 
     #[test]
     fn malformed_is_err() {
-        let p = temp_xml("sepa_sum_bad.xml", "<a><b></a>");
+        let p = temp_xml("sepa_sum2_bad.xml", "<a><b></a>");
         assert!(extract_payment_summary(&p).is_err());
     }
 }
