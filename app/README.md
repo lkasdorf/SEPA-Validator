@@ -1,7 +1,7 @@
 # SEPA Validator — Desktop App (Tauri + Rust + Svelte)
 
 A modern Windows desktop validator for SEPA payment XML files. It validates
-files against embedded ISO 20022 / GBIC XSD schemas using **libxml2**, and shows
+files against ISO 20022 / GBIC XSD schemas using **libxml2**, and shows
 a live, clickable, filterable validation log.
 
 - **Backend:** Rust (`src-tauri/`), XSD validation via the `libxml` crate (libxml2),
@@ -41,10 +41,11 @@ build tools. After this one-time setup, builds are fast.
    ```
    This puts `libclang.dll` in `%USERPROFILE%\libclang_pkg\clang\native`.
    (Alternatively install LLVM, which also provides `libclang.dll`.)
-6. **XSD schemas:** the ISO 20022 / GBIC `.xsd` files must be present in the
-   repo's `xml_schema/` directory at build time — they are **embedded into the
-   binary** at compile time (and are not redistributed; download from
-   iso20022.org / ebics.de). The build fails with a clear message if one is missing.
+6. **XSD schemas:** the ISO 20022 / GBIC `.xsd` files are **not redistributed**
+   (download from iso20022.org / ebics.de) and are **not embedded** in the binary.
+   After first launch, use the **Schemas…** toolbar button to import the `.xsd` files
+   or a folder containing them — the app copies them to `app_data_dir()/schemas/`
+   and loads them at runtime.
 
 ### Local build config (`src-tauri/.cargo/config.toml`)
 
@@ -87,12 +88,12 @@ cd app && npx tauri build
 ## Architecture notes
 
 - `src-tauri/src/model.rs` — `ValidationResult` / `Status` / `Message` (serde DTOs).
-- `src-tauri/src/schema.rs` — namespace → XSD map; schemas embedded via `include_bytes!`.
+- `src-tauri/src/schema.rs` — namespace → XSD filename map; no embedded bytes.
 - `src-tauri/src/validator.rs` — `detect_namespace` (quick-xml) + `Validator` with a
   per-run compiled-schema cache; maps libxml `StructuredError` to located messages.
 - `src-tauri/src/scanner.rs` — recursively expands files/folders to `.xml` paths.
 - `src-tauri/src/commands.rs` — `start_validation` (streams `ValidationEvent`s over a
   Channel from a worker thread, since libxml types are not `Send`), `read_file`,
-  `write_text_file`.
+  `write_text_file`, `schema_status`, `import_schemas`, `open_schema_dir`.
 - `src/lib/` — `api.ts` (typed invoke wrappers), `stores.ts`, and the components
-  (`Toolbar`, `FileList`, `CodeViewer`, `LogPanel`, `SummaryBar`).
+  (`Toolbar`, `FileList`, `CodeViewer`, `LogPanel`, `SummaryBar`, `SchemaDialog`).

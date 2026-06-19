@@ -62,3 +62,14 @@ export interface PaymentSummary {
   blocks: PmtInfSummary[];
   transactions: RemittanceEntry[];
 }
+
+export interface SchemaInfo {
+  namespace: string;
+  filename: string;
+  present: boolean;
+}
+
+export interface ImportResult {
+  imported: number;
+  skipped: string[];
+}

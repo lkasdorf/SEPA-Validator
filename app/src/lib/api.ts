@@ -1,5 +1,5 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
-import type { ValidationEvent, ValidationResult, PaymentSummary } from "./types";
+import type { ValidationEvent, ValidationResult, PaymentSummary, SchemaInfo, ImportResult } from "./types";
 
 /** Start validation; `onEvent` is called for each streamed event in order. */
 export async function startValidation(
@@ -28,3 +28,15 @@ export function writeTextFile(path: string, contents: string): Promise<void> {
 }
 
 export type { ValidationResult };
+
+export function schemaStatus(): Promise<SchemaInfo[]> {
+  return invoke<SchemaInfo[]>("schema_status");
+}
+
+export function importSchemas(paths: string[]): Promise<ImportResult> {
+  return invoke<ImportResult>("import_schemas", { paths });
+}
+
+export function openSchemaDir(): Promise<void> {
+  return invoke("open_schema_dir");
+}
