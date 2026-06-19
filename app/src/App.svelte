@@ -7,7 +7,7 @@
   import LogPanel from "./lib/LogPanel.svelte";
   import SummaryBar from "./lib/SummaryBar.svelte";
   import SchemaDialog from "./lib/SchemaDialog.svelte";
-  import { selectedResult, openViewerSearch, foldAllInViewer, unfoldAllInViewer, schemaDialogOpen } from "./lib/stores";
+  import { selectedResult, openViewerSearch, foldAllInViewer, unfoldAllInViewer, schemaDialogOpen, viewerLarge } from "./lib/stores";
   import { loadPaymentSummary } from "./lib/paymentSummary";
 
   let viewerTab: "xml" | "summary" | "remittance" = "xml";
@@ -57,8 +57,12 @@
         </div>
         {#if viewerTab === "xml"}
           <button on:click={() => $openViewerSearch()} disabled={!$selectedResult}>Search</button>
-          <button on:click={() => $foldAllInViewer()} disabled={!$selectedResult}>Collapse all</button>
-          <button on:click={() => $unfoldAllInViewer()} disabled={!$selectedResult}>Expand all</button>
+          {#if !$viewerLarge}
+            <button on:click={() => $foldAllInViewer()} disabled={!$selectedResult}>Collapse all</button>
+            <button on:click={() => $unfoldAllInViewer()} disabled={!$selectedResult}>Expand all</button>
+          {:else}
+            <span class="viewer-note">Große Datei: Syntax-Highlighting &amp; Falten deaktiviert (Performance)</span>
+          {/if}
         {/if}
       </div>
       <div class="viewer-pane" class:hidden={viewerTab !== "xml"}><CodeViewer /></div>

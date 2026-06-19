@@ -30,3 +30,4 @@ export const foldAllInViewer = writable<() => void>(() => {});
 export const unfoldAllInViewer = writable<() => void>(() => {});
 
 export const schemaDialogOpen = writable<boolean>(false);
+export const viewerLarge = writable<boolean>(false);
