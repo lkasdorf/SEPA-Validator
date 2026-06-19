@@ -6,7 +6,7 @@
   import { oneDark } from "@codemirror/theme-one-dark";
   import { search, searchKeymap, highlightSelectionMatches, openSearchPanel } from "@codemirror/search";
   import { codeFolding, foldGutter, foldKeymap, foldAll, unfoldAll } from "@codemirror/language";
-  import { selectedResult, jumpToLine } from "./stores";
+  import { selectedResult, jumpToLine, openViewerSearch, foldAllInViewer, unfoldAllInViewer } from "./stores";
   import { readFormatted } from "./api";
 
   let host: HTMLDivElement;
@@ -86,6 +86,9 @@
       }),
     });
     jumpToLine.set(jumpTo);
+    openViewerSearch.set(() => { if (view) openSearchPanel(view); });
+    foldAllInViewer.set(() => { if (view) foldAll(view); });
+    unfoldAllInViewer.set(() => { if (view) unfoldAll(view); });
     return () => view?.destroy();
   });
 
@@ -116,6 +119,6 @@
 <div class="codehost" bind:this={host}></div>
 
 <style>
-  .codehost { height: 100%; }
+  .codehost { flex: 1 1 auto; min-height: 0; }
   :global(.codehost .cm-editor) { height: 100%; }
 </style>

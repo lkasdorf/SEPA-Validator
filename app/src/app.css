@@ -13,5 +13,10 @@ body { font: 14px "Segoe UI", system-ui, sans-serif; background: var(--bg); colo
 .app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
 .body { display: grid; min-height: 0; }
 .files, .viewer, .log { min-height: 0; overflow: hidden; background: var(--panel); }
+.viewer { display: flex; flex-direction: column; }
+.viewer-bar { display: flex; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
+.viewer-bar button { background: var(--accent); color: #fff; border: none; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+.viewer-bar button:hover:not(:disabled) { filter: brightness(1.1); }
+.viewer-bar button:disabled { opacity: 0.45; cursor: default; }
 .gutter { background: var(--border); cursor: col-resize; }
 .gutter:hover { background: var(--accent); }
