@@ -1,6 +1,7 @@
 mod commands;
 mod formatting;
 mod model;
+mod payments;
 mod scanner;
 mod schema;
 mod validator;
@@ -23,7 +24,8 @@ pub fn run() {
             commands::start_validation,
             commands::read_file,
             commands::write_text_file,
-            commands::read_formatted
+            commands::read_formatted,
+            commands::read_payment_summary
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
