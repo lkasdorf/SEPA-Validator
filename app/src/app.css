@@ -24,5 +24,7 @@ body { font: 14px "Segoe UI", system-ui, sans-serif; background: var(--bg); colo
 .viewer-bar .viewer-tabs button:last-child { border-radius: 0 6px 6px 0; border-left: none; }
 .viewer-bar .viewer-tabs button.active { background: var(--accent); color: #fff; }
 .summary { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.viewer-pane { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.viewer-pane.hidden { display: none; }
 .gutter { background: var(--border); cursor: col-resize; }
 .gutter:hover { background: var(--accent); }

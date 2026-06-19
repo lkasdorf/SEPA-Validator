@@ -35,16 +35,30 @@ export function statusLabel(r: ValidationResult): string {
   }
 }
 
+export interface Creditor {
+  name: string | null;
+  iban: string | null;
+  bic: string | null;
+  creditorId: string | null;
+}
+
 export interface PmtInfSummary {
   nbOfTxs: string | null;
   ctrlSum: string | null;
   svcLvlCd: string | null;
+  lclInstrm: string | null;
+  seqTp: string | null;
   reqdDate: string | null;
+}
+
+export interface RemittanceEntry {
+  ustrd: string | null;
 }
 
 export interface PaymentSummary {
   messageType: string;
   pmtInfCount: number;
+  creditor: Creditor | null;
   blocks: PmtInfSummary[];
-  ustrd: string[];
+  transactions: RemittanceEntry[];
 }
