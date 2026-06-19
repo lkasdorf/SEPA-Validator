@@ -7,8 +7,24 @@
   import type { ValidationEvent } from "./types";
   import { exportTxt, exportCsv } from "./export";
   import { get } from "svelte/store";
+  import { schemaDialogOpen } from "./stores";
+  import { schemaStatus } from "./api";
   function doExportTxt() { exportTxt(get(results)); }
   function doExportCsv() { exportCsv(get(results)); }
+
+  let schemaPresent = 0;
+  let schemaTotal = 0;
+  async function refreshSchemaBadge() {
+    try {
+      const s = await schemaStatus();
+      schemaPresent = s.filter((x) => x.present).length;
+      schemaTotal = s.length;
+    } catch {
+      schemaPresent = 0;
+      schemaTotal = 0;
+    }
+  }
+  $: if (!$schemaDialogOpen) refreshSchemaBadge();
 
   async function run(paths: string[]) {
     if (paths.length === 0) return;
@@ -54,6 +70,7 @@
   <button on:click={pickFolder}>Select Folder…</button>
   <button on:click={doExportTxt} disabled={$results.length === 0}>Export TXT</button>
   <button on:click={doExportCsv} disabled={$results.length === 0}>Export CSV</button>
+  <button on:click={() => schemaDialogOpen.set(true)}>Schemas… {schemaTotal ? `(${schemaPresent}/${schemaTotal})` : ""}</button>
   <span class="hint">or drag &amp; drop files here</span>
   <button class="theme" on:click={toggleTheme} title="Toggle theme">◐</button>
 </header>

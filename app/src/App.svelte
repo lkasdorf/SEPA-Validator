@@ -6,7 +6,8 @@
   import RemittanceView from "./lib/RemittanceView.svelte";
   import LogPanel from "./lib/LogPanel.svelte";
   import SummaryBar from "./lib/SummaryBar.svelte";
-  import { selectedResult, openViewerSearch, foldAllInViewer, unfoldAllInViewer } from "./lib/stores";
+  import SchemaDialog from "./lib/SchemaDialog.svelte";
+  import { selectedResult, openViewerSearch, foldAllInViewer, unfoldAllInViewer, schemaDialogOpen } from "./lib/stores";
   import { loadPaymentSummary } from "./lib/paymentSummary";
 
   let viewerTab: "xml" | "summary" | "remittance" = "xml";
@@ -69,4 +70,5 @@
     <section class="log"><LogPanel /></section>
   </main>
   <SummaryBar />
+  {#if $schemaDialogOpen}<SchemaDialog />{/if}
 </div>
