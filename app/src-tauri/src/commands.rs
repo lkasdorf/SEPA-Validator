@@ -122,6 +122,64 @@ fn is_xsd(p: &Path) -> bool {
         .unwrap_or(false)
 }
 
+fn is_zip(p: &Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("zip"))
+        .unwrap_or(false)
+}
+
+/// Extract every `.xsd` entry of a zip into `dest`, flattened to its basename
+/// (so archive subfolders and any `../` are neutralized). Returns
+/// (imported_count, skipped). On open/read failure the zip path is added to skipped.
+fn extract_zip_xsds(zip_path: &Path, dest: &Path) -> (u32, Vec<String>) {
+    let mut imported = 0u32;
+    let mut skipped: Vec<String> = Vec::new();
+    let file = match std::fs::File::open(zip_path) {
+        Ok(f) => f,
+        Err(_) => {
+            skipped.push(zip_path.display().to_string());
+            return (imported, skipped);
+        }
+    };
+    let mut archive = match zip::ZipArchive::new(file) {
+        Ok(a) => a,
+        Err(_) => {
+            skipped.push(zip_path.display().to_string());
+            return (imported, skipped);
+        }
+    };
+    for i in 0..archive.len() {
+        let mut entry = match archive.by_index(i) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        if entry.is_dir() {
+            continue;
+        }
+        let name = entry.name().to_string();
+        let base = name
+            .rsplit(|c| c == '/' || c == '\\')
+            .next()
+            .unwrap_or("")
+            .to_string();
+        if base.is_empty() || !base.to_lowercase().ends_with(".xsd") {
+            continue;
+        }
+        match std::fs::File::create(dest.join(&base)) {
+            Ok(mut out) => {
+                if std::io::copy(&mut entry, &mut out).is_ok() {
+                    imported += 1;
+                } else {
+                    skipped.push(format!("{}!{}", zip_path.display(), base));
+                }
+            }
+            Err(_) => skipped.push(format!("{}!{}", zip_path.display(), base)),
+        }
+    }
+    (imported, skipped)
+}
+
 fn copy_one(src: &Path, dest: &Path, imported: &mut u32, skipped: &mut Vec<String>) {
     match src.file_name() {
         Some(name) if std::fs::copy(src, dest.join(name)).is_ok() => *imported += 1,
@@ -148,6 +206,10 @@ pub fn copy_xsds(paths: &[String], dest: &Path) -> ImportResult {
                 }
                 Err(_) => skipped.push(p.clone()),
             }
+        } else if path.is_file() && is_zip(path) {
+            let (imp, mut skp) = extract_zip_xsds(path, dest);
+            imported += imp;
+            skipped.append(&mut skp);
         } else if path.is_file() && is_xsd(path) {
             copy_one(path, dest, &mut imported, &mut skipped);
         } else {
@@ -170,6 +232,16 @@ pub fn open_schema_dir(app: AppHandle) -> Result<(), String> {
     let dir = schema_dir(&app)?;
     std::process::Command::new("explorer")
         .arg(&dir)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Open a URL in the default browser (Windows).
+#[tauri::command]
+pub fn open_url(url: String) -> Result<(), String> {
+    std::process::Command::new("explorer")
+        .arg(&url)
         .spawn()
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -204,6 +276,30 @@ mod tests {
         assert_eq!(r.imported, 1);
         assert_eq!(r.skipped, vec![txt]);
         assert!(dest.join("pain.001.001.03.xsd").exists());
+    }
+
+    #[test]
+    fn extracts_xsd_from_zip_and_ignores_non_xsd() {
+        use std::io::Write as _;
+        let dest = fresh_dir("sepa_imp_destzip");
+        let zip_path = std::env::temp_dir().join("sepa_imp_test.zip");
+        let _ = std::fs::remove_file(&zip_path);
+        {
+            let f = std::fs::File::create(&zip_path).unwrap();
+            let mut zw = zip::ZipWriter::new(f);
+            let opts = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            // A nested .xsd (must be flattened to its basename) and a non-.xsd.
+            zw.start_file("schemas/pain.001.001.03.xsd", opts).unwrap();
+            zw.write_all(b"<xsd/>").unwrap();
+            zw.start_file("readme.txt", opts).unwrap();
+            zw.write_all(b"hi").unwrap();
+            zw.finish().unwrap();
+        }
+        let r = copy_xsds(&[zip_path.display().to_string()], &dest);
+        assert_eq!(r.imported, 1);
+        assert!(dest.join("pain.001.001.03.xsd").exists());
+        assert!(!dest.join("readme.txt").exists());
     }
 
     #[test]
