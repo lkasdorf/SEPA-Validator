@@ -38,6 +38,8 @@ pub struct PmtInfSummary {
 #[derive(Debug, Clone, PartialEq, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RemittanceEntry {
+    pub instr_id: Option<String>,
+    pub end_to_end_id: Option<String>,
     pub ustrd: Option<String>,
 }
 
@@ -60,6 +62,14 @@ fn local_of(name: &[u8]) -> String {
     }
 }
 
+/// Per-transaction accumulation while parsing (not serialized).
+#[derive(Default)]
+struct TxAccum {
+    ustrd: Vec<String>,
+    instr_id: Option<String>,
+    end_to_end_id: Option<String>,
+}
+
 pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
     let message_type = detect_namespace(path)
         .map(|ns| ns.rsplit(':').next().unwrap_or("").to_string())
@@ -75,7 +85,7 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
     let mut current: Option<PmtInfSummary> = None;
     let mut current_creditor = Creditor::default();
     let mut creditor: Option<Creditor> = None;
-    let mut current_tx: Option<Vec<String>> = None;
+    let mut current_tx: Option<TxAccum> = None;
 
     loop {
         buf.clear();
@@ -87,7 +97,7 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
                         current = Some(PmtInfSummary::default());
                         current_creditor = Creditor::default();
                     }
-                    "CdtTrfTxInf" | "DrctDbtTxInf" => current_tx = Some(Vec::new()),
+                    "CdtTrfTxInf" | "DrctDbtTxInf" => current_tx = Some(TxAccum::default()),
                     _ => {}
                 }
                 stack.push(name);
@@ -105,8 +115,16 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
                     }
                     "CdtTrfTxInf" | "DrctDbtTxInf" => {
                         if let Some(tx) = current_tx.take() {
-                            let ustrd = if tx.is_empty() { None } else { Some(tx.join("\n")) };
-                            transactions.push(RemittanceEntry { ustrd });
+                            let ustrd = if tx.ustrd.is_empty() {
+                                None
+                            } else {
+                                Some(tx.ustrd.join("\n"))
+                            };
+                            transactions.push(RemittanceEntry {
+                                instr_id: tx.instr_id,
+                                end_to_end_id: tx.end_to_end_id,
+                                ustrd,
+                            });
                         }
                     }
                     _ => {}
@@ -161,11 +179,21 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
                     {
                         current_creditor.creditor_id.get_or_insert(text);
                     }
+                    "InstrId" if parent == "PmtId" => {
+                        if let Some(tx) = current_tx.as_mut() {
+                            tx.instr_id.get_or_insert(text);
+                        }
+                    }
+                    "EndToEndId" if parent == "PmtId" => {
+                        if let Some(tx) = current_tx.as_mut() {
+                            tx.end_to_end_id.get_or_insert(text);
+                        }
+                    }
                     "Ustrd" => {
                         if let Some(tx) = current_tx.as_mut() {
                             let trimmed = text.trim();
                             if !trimmed.is_empty() {
-                                tx.push(trimmed.to_string());
+                                tx.ustrd.push(trimmed.to_string());
                             }
                         }
                     }
@@ -209,8 +237,8 @@ mod tests {
       <CtrlSum>300.00</CtrlSum>
       <PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl></PmtTpInf>
       <ReqdExctnDt>2026-06-20</ReqdExctnDt>
-      <CdtTrfTxInf><Cdtr><Nm>Payee One</Nm></Cdtr><RmtInf><Ustrd>Invoice 1</Ustrd></RmtInf></CdtTrfTxInf>
-      <CdtTrfTxInf><Cdtr><Nm>Payee Two</Nm></Cdtr><RmtInf><Ustrd>Invoice 2</Ustrd></RmtInf></CdtTrfTxInf>
+      <CdtTrfTxInf><PmtId><InstrId>INSTR-1</InstrId><EndToEndId>E2E-1</EndToEndId></PmtId><Cdtr><Nm>Payee One</Nm></Cdtr><RmtInf><Ustrd>Invoice 1</Ustrd></RmtInf></CdtTrfTxInf>
+      <CdtTrfTxInf><PmtId><EndToEndId>E2E-2</EndToEndId></PmtId><Cdtr><Nm>Payee Two</Nm></Cdtr><RmtInf><Ustrd>Invoice 2</Ustrd></RmtInf></CdtTrfTxInf>
     </PmtInf>
     <PmtInf>
       <PmtInfId>P2</PmtInfId>
@@ -243,6 +271,13 @@ mod tests {
         assert_eq!(s.transactions[0].ustrd.as_deref(), Some("Invoice 1"));
         assert_eq!(s.transactions[1].ustrd.as_deref(), Some("Invoice 2"));
         assert_eq!(s.transactions[2].ustrd.as_deref(), Some("Invoice 3"));
+        // Origin: InstrId preferred; tx2 falls back to EndToEndId; tx3 has neither.
+        assert_eq!(s.transactions[0].instr_id.as_deref(), Some("INSTR-1"));
+        assert_eq!(s.transactions[0].end_to_end_id.as_deref(), Some("E2E-1"));
+        assert_eq!(s.transactions[1].instr_id, None);
+        assert_eq!(s.transactions[1].end_to_end_id.as_deref(), Some("E2E-2"));
+        assert_eq!(s.transactions[2].instr_id, None);
+        assert_eq!(s.transactions[2].end_to_end_id, None);
     }
 
     const PAIN008: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
