@@ -31,3 +31,9 @@ export const unfoldAllInViewer = writable<() => void>(() => {});
 
 export const schemaDialogOpen = writable<boolean>(false);
 export const viewerLarge = writable<boolean>(false);
+
+export type AboutTab = "about" | "shortcuts" | "licenses" | "privacy";
+export const aboutDialogOpen = writable<boolean>(false);
+export const aboutTab = writable<AboutTab>("about");
+
+export const updateDialogOpen = writable<boolean>(false);
