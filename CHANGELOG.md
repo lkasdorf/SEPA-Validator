@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.1.0-beta.1] - 2026-06-21
+## [2.1.0] - 2026-06-21
+
+### Added
+- **Help / About menu** (the ☰ button in the toolbar): an **About** dialog (version, description, MIT license, GitHub links), plus **Keyboard Shortcuts**, **Licenses** (open-source components and a note that the XSD schemas are not bundled), and a **Privacy** statement (all validation runs locally).
+- Menu actions: **Check for Updates…**, **Documentation**, **Changelog**, **Report an Issue**, and **Copy Diagnostics** (version, WebView2 version, schema status — for bug reports).
+- **Built-in auto-updater**: the app can check GitHub for a newer released version and download, verify (signed), install, and restart in-app. Stable channel — pre-releases are not offered automatically.
 
 ### Changed
 - **Visual redesign of the desktop app** toward a calm, instrument-like look:
@@ -55,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release: native Windows GUI SEPA XML Validator (PowerShell/WinForms) with full XSD validation, drag & drop, file/folder selection, batch validation, and TXT export.
 - Bash CLI scripts for validation, batch validation, and renaming XML files by date/company/schema.
 
-[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.1.0-beta.1...HEAD
-[2.1.0-beta.1]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.0.0...v2.1.0-beta.1
+[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/lkasdorf/SEPA-Validator/releases/tag/v1.0.0
