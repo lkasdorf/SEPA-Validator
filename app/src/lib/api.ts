@@ -40,3 +40,7 @@ export function importSchemas(paths: string[]): Promise<ImportResult> {
 export function openSchemaDir(): Promise<void> {
   return invoke("open_schema_dir");
 }
+
+export function openUrl(url: string): Promise<void> {
+  return invoke("open_url", { url });
+}
