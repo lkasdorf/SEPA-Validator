@@ -16,7 +16,7 @@
 </footer>
 
 <style>
-  .summary { display: flex; gap: 14px; align-items: center; padding: 6px 12px; border-top: 1px solid var(--border); background: var(--panel); font-size: 13px; }
+  .summary { display: flex; gap: var(--sp-3); align-items: center; padding: var(--sp-2) var(--sp-3); border-top: 1px solid var(--border); background: var(--chrome); font-size: 13px; font-variant-numeric: tabular-nums; }
   .ok { color: var(--ok); } .err { color: var(--err); } .warn { color: var(--warn); }
   .bar { flex: 0 0 220px; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
   .fill { height: 100%; background: var(--accent); transition: width 120ms; }
