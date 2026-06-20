@@ -1,139 +1,135 @@
 # SEPA-Validator
 
-A native Windows GUI tool for validating SEPA XML payment files against ISO 20022 XSD schemas.
+Validate SEPA payment XML files against ISO 20022 XSD schemas.
 
-![PowerShell](https://img.shields.io/badge/PowerShell-5.1+-blue) ![Windows](https://img.shields.io/badge/Windows-10%2F11-blue) ![License](https://img.shields.io/badge/License-MIT-green)
+![Windows](https://img.shields.io/badge/Windows-10%2F11-blue) ![Tauri](https://img.shields.io/badge/Tauri-Rust%20%2B%20Svelte-24C8DB) ![License](https://img.shields.io/badge/License-MIT-green) [![Latest release](https://img.shields.io/github/v/release/lkasdorf/SEPA-Validator)](https://github.com/lkasdorf/SEPA-Validator/releases/latest)
 
-## Features
+This repository contains three tools that share the same purpose:
 
-- **Drag & Drop** - drop XML files or entire folders onto the window
-- **File & Folder Picker** - select files or directories via standard dialogs
-- **Automatic Schema Detection** - identifies the XML namespace and selects the matching XSD
-- **Detailed Error Reporting** - validation errors and warnings with line/column numbers
-- **Color-Coded Results** - green (OK), red (errors), yellow (warnings)
-- **Text Export** - save validation results as a readable summary report
-- **No Installation Required** - runs on PowerShell 5.1 (preinstalled on Windows 10/11)
-- **Standalone EXE** - can be compiled into a single executable with embedded schemas
+- **SEPA Validator desktop app** (`app/`) — the modern native Windows app (Tauri + Rust + Svelte) with a live, clickable validation log. **This is the recommended tool.**
+- **PowerShell GUI** (`windows/`) — the original WinForms tool. _Legacy._
+- **CLI scripts** (`scripts/`) — bash validators for Linux/macOS/WSL.
 
-## Supported SEPA Formats
+All three validate the same way (ISO 20022 XSD validation); the desktop app and CLI use **libxml2**, the PowerShell tool uses .NET. Verdicts are equivalent.
 
-| Format | Schema | Description |
-|--------|--------|-------------|
-| pain.001.001.03 | Credit Transfer v03 | Credit transfers |
-| pain.001.001.09 | Credit Transfer v09 | Credit transfers (current) |
-| pain.002.001.10 | Payment Status v10 | Status reports |
-| pain.007.001.09 | Payment Reversal v09 | Payment reversals |
-| pain.008.001.02 | Direct Debit v02 | Direct debits |
-| pain.008.001.08 | Direct Debit v08 | Direct debits (current) |
-| camt.054.001.08 | Bank-to-Customer Notification | Account statements |
+---
 
-## Quick Start
+## Desktop app (recommended)
 
-### Option A: Run as Script
+A native Windows application that validates one or many files at once and lets you drill into exactly where each one fails.
 
-1. Copy the `windows/` folder to your machine
-2. Place your XSD schema files in a `schemas/` subfolder next to `SEPA-Validator.ps1`
-3. Double-click `SEPA-Validator.cmd`
+### Features
 
-### Option B: Build Standalone EXE
+- **Live, streaming log** — files appear and update as they are validated.
+- **Click to the error** — click any error or warning to jump to its line in a syntax-highlighted XML viewer (pretty-printed, even if the source is all on one line).
+- **Find & fold** — search within the open XML (`Ctrl+F`) and collapse/expand blocks; a lean mode keeps very large files (>10 MB) responsive.
+- **Overview tab** — the creditor (`Cdtr`) block and a `PmtInf` statistics table (`NbOfTxs`, `CtrlSum`, `SvcLvl`, `LclInstrm`, `SeqTp`, dates) for pain.001 / pain.008.
+- **Remittance tab** — one row per transaction with its origin (`InstrId` → `EndToEndId`) and remittance info (`Ustrd`), a warning for missing entries, and a **CSV export**.
+- **Schemas… dialog** — import the XSD schemas (as `.xsd`, a folder, or a `.zip`), see which are present/missing, and open the schema folder. Schemas are **not bundled** (see below).
+- **Export** results as TXT or CSV; **light/dark** theme; **drag & drop** files or folders; resizable panels.
+- **Help/About menu** (☰) — about/version, keyboard shortcuts, licenses, a privacy note, "Copy Diagnostics", and a built-in **auto-updater** (Check for Updates).
 
-1. Install the build tool: `Install-Module ps2exe -Scope CurrentUser`
-2. Place your XSD schemas in `xml_schema/`
-3. Run the build:
+### Install
 
-```powershell
-cd windows
-powershell -ExecutionPolicy Bypass -File .\build.ps1
+1. Download the latest installer from the [**Releases**](https://github.com/lkasdorf/SEPA-Validator/releases/latest) page:
+   - `SEPA-Validator-<version>-windows-x64-setup.exe` — installer, or
+   - `SEPA-Validator-<version>-windows-x64-portable.exe` — single standalone executable.
+2. Run it. It needs the Microsoft **WebView2** runtime (preinstalled on current Windows 10/11). The installer is unsigned, so SmartScreen may warn — choose **More info → Run anyway**.
+3. From v2.1.0 onward the app updates itself: **☰ → Check for Updates**.
+
+### First run — import the XSD schemas
+
+The schemas are **not distributed** with the app (they are not redistributable). Open **Schemas…**, download them from the [official sources](#obtaining-xsd-schemas), and import them as `.xsd` files, a folder, or a `.zip`. The badge in the toolbar shows how many of the expected schemas are present.
+
+### Build from source
+
+```sh
+cd app
+npm install
+npx tauri dev                 # run with hot reload
+npx tauri build               # build installer -> app/src-tauri/target/release/bundle/
 ```
 
-4. Find `SEPA-Validator.exe` in `windows/dist/` — all schemas are embedded, no extra files needed
+First-time native setup (vcpkg + libxml2, libclang, local `.cargo/config.toml`) is documented in [`app/README.md`](app/README.md).
 
-## Usage
+---
 
-### Windows GUI
+## Supported SEPA formats
 
-1. **Load files** - drag & drop, "Select Files..." or "Select Folder..."
-2. **Review results** - click a file in the upper grid to see details below
-3. **Export** - "Export Results..." saves a text report
+The desktop app and CLI recognise these namespaces (provide the matching XSD via the Schemas… dialog or `xml_schema/`):
 
-### Linux / macOS CLI
+| Format | Description |
+|--------|-------------|
+| pain.001.001.03 / .09 | Credit transfers (`.09` is current) |
+| pain.002.001.10 | Payment status reports |
+| pain.007.001.09 | Payment reversals (GBIC variant) |
+| pain.008.001.02 / .08 | Direct debits (`.08` is current) |
+| camt.054.001.08 | Bank-to-customer debit/credit notification |
+| container.nnn.001.GBIC4 | DK/GBIC container |
 
-Requires `xmllint` (from `libxml2-utils` on Debian/Ubuntu or `libxml2` via Homebrew on macOS).
-
-```bash
-# Validate a single file
-./scripts/validate.sh payment.xml
-
-# Validate multiple files
-./scripts/validate.sh file1.xml file2.xml file3.xml
-
-# Validate all XMLs in a folder
-./scripts/validate.sh /path/to/xml/files/
-
-# Use a custom schema directory
-./scripts/validate.sh --schema-dir ./my-schemas payment.xml
-
-# Export results to CSV
-./scripts/validate.sh --csv report.csv *.xml
-
-# Export results to text report
-./scripts/validate.sh --export report.txt *.xml
-
-# Quiet mode (errors and summary only)
-./scripts/validate.sh -q *.xml
-```
-
-## Adding Custom Schemas
-
-1. Place the XSD file in the `schemas/` folder (or `xml_schema/` for EXE builds)
-2. Add the namespace mapping in `SEPA-Validator.ps1`:
-
-```powershell
-$SchemaMap = [ordered]@{
-    # ... existing entries ...
-    'urn:your:namespace:here' = 'your_schema.xsd'
-}
-```
-
-3. Rebuild the EXE if using the standalone version
-
-## Obtaining XSD Schemas
+## Obtaining XSD schemas
 
 This tool requires XSD schema files for validation. Schemas are **not included** in this repository — download them from the official sources:
 
 | Source | Schemas | URL |
 |--------|---------|-----|
-| ISO 20022 | pain.001, pain.002, pain.008, camt.054, ... | [iso20022.org/catalogue-of-iso-20022-messages](https://www.iso20022.org/catalogue-of-iso-20022-messages) |
-| Deutsche Kreditwirtschaft (DK) | GBIC variants for German SEPA | [die-dk.de/themen/zahlungsverkehr](https://die-dk.de/themen/zahlungsverkehr/) |
-| EBICS (Germany) | German SEPA data formats & schemas | [ebics.de/de/datenformate](https://www.ebics.de/de/datenformate) |
-| EPC (European Payments Council) | EPC SEPA scheme rulebooks | [europeanpaymentscouncil.eu](https://www.europeanpaymentscouncil.eu/document-library) |
+| ISO 20022 | pain.001, pain.002, pain.008, camt.054, … | [iso20022.org](https://www.iso20022.org/catalogue-of-iso-20022-messages) |
+| Deutsche Kreditwirtschaft (DK) | GBIC variants for German SEPA | [die-dk.de](https://die-dk.de/themen/zahlungsverkehr/) |
+| EBICS (Germany) | German SEPA data formats & schemas | [ebics.de](https://www.ebics.de/de/datenformate) |
+| EPC | EPC SEPA scheme rulebooks | [europeanpaymentscouncil.eu](https://www.europeanpaymentscouncil.eu/document-library) |
 
-Place the downloaded `.xsd` files in `xml_schema/` (for EXE builds) or `windows/schemas/` (for script mode).
+For the **desktop app**, import the downloaded files via the **Schemas…** dialog. For the **CLI / PowerShell** tools, place the `.xsd` files in `xml_schema/` (or pass `--schema-dir`).
 
-## Requirements
+---
 
-### Windows GUI
-- Windows 10 or 11
-- PowerShell 5.1+ (preinstalled)
-- No admin rights required
+## CLI (Linux / macOS / WSL)
 
-### Linux / macOS CLI
-- Bash
-- `xmllint` (`sudo apt install libxml2-utils` or `brew install libxml2`)
+Requires `xmllint` (`sudo apt install libxml2-utils`, or `brew install libxml2` on macOS).
 
-## Project Structure
+```bash
+# Validate a single file, multiple files, or a whole folder
+./scripts/validate.sh payment.xml
+./scripts/validate.sh file1.xml file2.xml
+./scripts/validate.sh /path/to/xml/files/
+
+# Options
+./scripts/validate.sh --schema-dir ./my-schemas payment.xml   # custom schema directory
+./scripts/validate.sh --csv report.csv *.xml                  # export CSV
+./scripts/validate.sh --export report.txt *.xml               # export text report
+./scripts/validate.sh -q *.xml                                # quiet: errors + summary only
+```
+
+`scripts/validate_all.sh` batch-validates a tree and writes a CSV report; `scripts/rename_xml_by_*.sh` rename files by date/company or schema.
+
+## PowerShell GUI (legacy)
+
+The original single-file WinForms tool still lives under `windows/`.
+
+```powershell
+# Run as a script (place XSDs in windows/schemas/ first)
+windows\SEPA-Validator.cmd
+
+# Or build a standalone EXE with embedded schemas
+Install-Module ps2exe -Scope CurrentUser
+cd windows
+powershell -ExecutionPolicy Bypass -File .\build.ps1    # -> windows/dist/SEPA-Validator.exe
+```
+
+It runs on PowerShell 5.1 (preinstalled on Windows 10/11) and needs no admin rights.
+
+---
+
+## Project structure
 
 ```
-windows/
-  SEPA-Validator.ps1    # Main GUI application (Windows)
-  SEPA-Validator.cmd    # Launcher (double-click)
-  build.ps1             # EXE build script
-  setup.cmd             # Schema copy helper
-scripts/
-  validate.sh           # CLI validator (Linux/macOS)
-  validate_all.sh       # Batch validator with CSV output
-  rename_xml_by_*.sh    # File renaming utilities
-xml_schema/             # XSD schema files (not included - download from sources above)
+app/                    # Desktop app — Tauri + Rust + Svelte (recommended)
+  src/                  #   Svelte/TypeScript frontend
+  src-tauri/            #   Rust backend (libxml2 validation, schema import, updater)
+windows/                # PowerShell/WinForms GUI (legacy)
+  SEPA-Validator.ps1    #   Main application
+  build.ps1             #   ps2exe build script
+scripts/                # Bash CLI validators + renaming utilities
+xml_schema/             # XSD schema files (not included — download from sources above)
 ```
 
 ## License
