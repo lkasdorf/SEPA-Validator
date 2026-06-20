@@ -28,8 +28,16 @@
         status = "none";
       }
     } catch (e) {
-      status = "error";
-      error = e instanceof Error ? e.message : String(e);
+      const msg = e instanceof Error ? e.message : String(e);
+      // Stable channel with no published manifest yet (the current "latest"
+      // release carries no latest.json) returns no valid release JSON. That's
+      // "nothing on offer", not a connection failure — show it calmly.
+      if (/valid release json|could not fetch.*json|\b404\b|not found/i.test(msg)) {
+        status = "none";
+      } else {
+        status = "error";
+        error = msg;
+      }
     }
   }
 
@@ -69,7 +77,7 @@
       {#if status === "checking"}
         <p>Checking for updates…</p>
       {:else if status === "none"}
-        <p>You're on the latest version.</p>
+        <p>No update is available right now.</p>
       {:else if status === "available"}
         <p>Version <span class="mono">{version}</span> is available.</p>
         {#if notes}<pre class="notes">{notes}</pre>{/if}
