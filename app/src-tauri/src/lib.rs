@@ -28,7 +28,8 @@ pub fn run() {
             commands::read_payment_summary,
             commands::schema_status,
             commands::import_schemas,
-            commands::open_schema_dir
+            commands::open_schema_dir,
+            commands::open_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
