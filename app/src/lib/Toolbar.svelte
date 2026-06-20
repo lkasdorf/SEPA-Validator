@@ -7,6 +7,7 @@
   import type { ValidationEvent } from "./types";
   import { exportTxt, exportCsv } from "./export";
   import { get } from "svelte/store";
+  import Menu from "./Menu.svelte";
   function doExportTxt() { exportTxt(get(results)); }
   function doExportCsv() { exportCsv(get(results)); }
 
@@ -70,12 +71,16 @@
   <button class="btn btn--ghost" on:click={doExportCsv} disabled={$results.length === 0}>Export CSV</button>
   <button class="btn btn--ghost" on:click={() => schemaDialogOpen.set(true)}>Schemas… {schemaTotal ? `(${schemaPresent}/${schemaTotal})` : ""}</button>
   <span class="hint">or drag &amp; drop files here</span>
-  <button class="btn btn--ghost theme" on:click={toggleTheme} title="Toggle theme" aria-label="Toggle theme">◐</button>
+  <div class="right">
+    <Menu />
+    <button class="btn btn--ghost" on:click={toggleTheme} title="Toggle theme" aria-label="Toggle theme">◐</button>
+  </div>
 </header>
 
 <style>
   .toolbar { display: flex; gap: var(--sp-2); align-items: center; padding: var(--sp-2) var(--sp-3); background: var(--chrome); color: var(--fg); border-bottom: 1px solid var(--border); }
   .brand { margin-right: var(--sp-2); padding-left: var(--sp-2); font-weight: 600; letter-spacing: .01em; border-left: 3px solid var(--accent); }
   .hint { color: var(--muted); font-size: 12px; }
-  .theme { margin-left: auto; font-size: 14px; }
+  .right { margin-left: auto; display: flex; gap: var(--sp-2); align-items: center; }
+  .right button { font-size: 14px; }
 </style>
