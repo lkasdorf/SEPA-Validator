@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
-  import { schemaStatus, importSchemas, openSchemaDir } from "./api";
+  import { schemaStatus, importSchemas, openSchemaDir, openUrl } from "./api";
   import { schemaDialogOpen } from "./stores";
   import type { SchemaInfo } from "./types";
 
@@ -20,7 +20,7 @@
   }
 
   async function importFiles() {
-    const sel = await openDialog({ multiple: true, filters: [{ name: "XSD", extensions: ["xsd"] }] });
+    const sel = await openDialog({ multiple: true, filters: [{ name: "XSD/ZIP", extensions: ["xsd", "zip"] }] });
     if (!sel) return;
     await runImport(Array.isArray(sel) ? sel : [sel]);
   }
@@ -36,7 +36,7 @@
     note = "";
     try {
       const r = await importSchemas(paths);
-      note = `${r.imported} XSD-Datei(en) importiert${r.skipped.length ? `, ${r.skipped.length} übersprungen` : ""}.`;
+      note = `${r.imported} Schema-Datei(en) importiert${r.skipped.length ? `, ${r.skipped.length} übersprungen` : ""}.`;
       await refresh();
     } catch {
       note = "Import fehlgeschlagen.";
@@ -55,6 +55,15 @@
       note = "Ordner konnte nicht geöffnet werden.";
     }
   }
+
+  const DOWNLOAD_URL = "https://www.ebics.de/de/datenformate";
+  async function download() {
+    try {
+      await openUrl(DOWNLOAD_URL);
+    } catch {
+      note = "Download-Seite konnte nicht geöffnet werden.";
+    }
+  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
@@ -64,7 +73,7 @@
       <strong>Schemas</strong>
       <button class="x" on:click={close} aria-label="Schließen">✕</button>
     </header>
-    <p class="hint">Die XSDs werden nicht mitgeliefert. Importiere die ISO-20022/GBIC-Schemas, um zu validieren.</p>
+    <p class="hint">Die XSDs werden nicht mitgeliefert. Lade sie von der offiziellen Quelle (ebics.de für DK/GBIC, iso20022.org für die ISO-Schemas) und importiere sie hier als ZIP oder XSD.</p>
     <div class="tablewrap">
       <table>
         <thead><tr><th>Namespace</th><th>Datei</th><th>Status</th></tr></thead>
@@ -81,7 +90,8 @@
     </div>
     {#if note}<p class="note">{note}</p>{/if}
     <footer>
-      <button on:click={importFiles} disabled={busy}>XSD-Dateien…</button>
+      <button on:click={download}>Herunterladen…</button>
+      <button on:click={importFiles} disabled={busy}>XSD/ZIP-Dateien…</button>
       <button on:click={importFolder} disabled={busy}>Ordner…</button>
       <button on:click={openFolder}>Ordner öffnen</button>
       <button class="close" on:click={close}>Schließen</button>
