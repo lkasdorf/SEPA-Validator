@@ -17,3 +17,6 @@ Desktop.ini
 
 # Internal project config
 AGENTS.md
+
+# Claude Code local config / skills / plugins (user-local)
+.claude/
