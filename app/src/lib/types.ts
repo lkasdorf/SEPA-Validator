@@ -52,6 +52,8 @@ export interface PmtInfSummary {
 }
 
 export interface RemittanceEntry {
+  instrId: string | null;
+  endToEndId: string | null;
   ustrd: string | null;
 }
 

@@ -1,6 +1,6 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "./api";
-import type { ValidationResult } from "./types";
+import type { ValidationResult, RemittanceEntry } from "./types";
 import { statusLabel } from "./types";
 
 function stamp(): string {
@@ -33,5 +33,25 @@ export async function exportCsv(results: ValidationResult[]): Promise<void> {
   for (const r of results) {
     out += [esc(r.file), esc(r.namespace), esc(r.schema), esc(statusLabel(r)), r.errors, r.warnings].join(";") + "\n";
   }
+  await writeTextFile(path, out);
+}
+
+export async function exportRemittanceCsv(
+  transactions: RemittanceEntry[],
+  sourceFile: string
+): Promise<void> {
+  const base = sourceFile.replace(/\.[^.]+$/, "") || "datei";
+  const path = await save({
+    defaultPath: `Verwendungszweck_${base}_${stamp()}.csv`,
+    filters: [{ name: "CSV", extensions: ["csv"] }],
+  });
+  if (!path) return;
+  const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
+  let out = "#;Herkunft;Verwendungszweck\n";
+  transactions.forEach((t, i) => {
+    const herkunft = t.instrId ?? t.endToEndId ?? "";
+    const zweck = (t.ustrd ?? "").replace(/\r?\n/g, " ");
+    out += [i + 1, esc(herkunft), esc(zweck)].join(";") + "\n";
+  });
   await writeTextFile(path, out);
 }
