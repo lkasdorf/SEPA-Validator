@@ -15,7 +15,7 @@
     try {
       rows = await schemaStatus();
     } catch {
-      note = "Status konnte nicht geladen werden.";
+      note = "Could not load status.";
     }
   }
 
@@ -36,10 +36,10 @@
     note = "";
     try {
       const r = await importSchemas(paths);
-      note = `${r.imported} Schema-Datei(en) importiert${r.skipped.length ? `, ${r.skipped.length} übersprungen` : ""}.`;
+      note = `${r.imported} schema file(s) imported${r.skipped.length ? `, ${r.skipped.length} skipped` : ""}.`;
       await refresh();
     } catch {
-      note = "Import fehlgeschlagen.";
+      note = "Import failed.";
     }
     busy = false;
   }
@@ -52,7 +52,7 @@
     try {
       await openSchemaDir();
     } catch {
-      note = "Ordner konnte nicht geöffnet werden.";
+      note = "Could not open folder.";
     }
   }
 
@@ -61,7 +61,7 @@
     try {
       await openUrl(DOWNLOAD_URL);
     } catch {
-      note = "Download-Seite konnte nicht geöffnet werden.";
+      note = "Could not open download page.";
     }
   }
 </script>
@@ -71,18 +71,18 @@
   <div class="dialog" role="dialog" aria-modal="true" aria-label="Schemas">
     <header>
       <strong>Schemas</strong>
-      <button class="x" on:click={close} aria-label="Schließen">✕</button>
+      <button class="x" on:click={close} aria-label="Close">✕</button>
     </header>
-    <p class="hint">Die XSDs werden nicht mitgeliefert. Lade sie von der offiziellen Quelle (ebics.de für DK/GBIC, iso20022.org für die ISO-Schemas) und importiere sie hier als ZIP oder XSD.</p>
+    <p class="hint">The XSDs are not bundled. Download them from the official source (ebics.de for DK/GBIC, iso20022.org for the ISO schemas) and import them here as ZIP or XSD.</p>
     <div class="tablewrap">
       <table>
-        <thead><tr><th>Namespace</th><th>Datei</th><th>Status</th></tr></thead>
+        <thead><tr><th>Namespace</th><th>File</th><th>Status</th></tr></thead>
         <tbody>
           {#each rows as r}
             <tr>
-              <td class="ns">{r.namespace}</td>
-              <td>{r.filename}</td>
-              <td class={r.present ? "ok" : "missing"}>{r.present ? "✓ vorhanden" : "✗ fehlt"}</td>
+              <td class="ns mono">{r.namespace}</td>
+              <td class="mono">{r.filename}</td>
+              <td class={r.present ? "ok" : "missing"}>{r.present ? "✓ present" : "✗ missing"}</td>
             </tr>
           {/each}
         </tbody>
@@ -90,11 +90,11 @@
     </div>
     {#if note}<p class="note">{note}</p>{/if}
     <footer>
-      <button on:click={download}>Herunterladen…</button>
-      <button on:click={importFiles} disabled={busy}>XSD/ZIP-Dateien…</button>
-      <button on:click={importFolder} disabled={busy}>Ordner…</button>
-      <button on:click={openFolder}>Ordner öffnen</button>
-      <button class="close" on:click={close}>Schließen</button>
+      <button class="btn btn--ghost" on:click={download}>Download…</button>
+      <button class="btn btn--primary" on:click={importFiles} disabled={busy}>XSD/ZIP files…</button>
+      <button class="btn btn--primary" on:click={importFolder} disabled={busy}>Folder…</button>
+      <button class="btn btn--ghost" on:click={openFolder}>Open folder</button>
+      <button class="btn btn--ghost close" on:click={close}>Close</button>
     </footer>
   </div>
 </div>
@@ -131,9 +131,6 @@
   td.ok { color: var(--ok); }
   td.missing { color: var(--err); }
   .note { font-size: 12px; margin: 8px 0 0; }
-  footer { display: flex; gap: 8px; margin-top: 12px; }
-  footer button { background: var(--accent); color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-  footer button:hover:not(:disabled) { filter: brightness(1.1); }
-  footer button:disabled { opacity: 0.45; cursor: default; }
-  footer button.close { margin-left: auto; background: transparent; color: var(--fg); border: 1px solid var(--border); }
+  footer { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); }
+  footer .close { margin-left: auto; }
 </style>

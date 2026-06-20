@@ -50,18 +50,18 @@
     <div class="gutter" role="separator" aria-orientation="vertical" on:mousedown={(e) => startDrag("left", e)}></div>
     <section class="viewer">
       <div class="viewer-bar">
-        <div class="viewer-tabs">
+        <div class="seg viewer-tabs">
           <button class:active={viewerTab === "xml"} on:click={() => (viewerTab = "xml")}>XML</button>
-          <button class:active={viewerTab === "summary"} on:click={() => (viewerTab = "summary")}>Übersicht</button>
-          <button class:active={viewerTab === "remittance"} on:click={() => (viewerTab = "remittance")}>Verwendungszweck</button>
+          <button class:active={viewerTab === "summary"} on:click={() => (viewerTab = "summary")}>Overview</button>
+          <button class:active={viewerTab === "remittance"} on:click={() => (viewerTab = "remittance")}>Remittance</button>
         </div>
         {#if viewerTab === "xml"}
-          <button on:click={() => $openViewerSearch()} disabled={!$selectedResult}>Search</button>
+          <button class="btn btn--ghost" on:click={() => $openViewerSearch()} disabled={!$selectedResult}>Search</button>
           {#if !$viewerLarge}
-            <button on:click={() => $foldAllInViewer()} disabled={!$selectedResult}>Collapse all</button>
-            <button on:click={() => $unfoldAllInViewer()} disabled={!$selectedResult}>Expand all</button>
+            <button class="btn btn--ghost" on:click={() => $foldAllInViewer()} disabled={!$selectedResult}>Collapse all</button>
+            <button class="btn btn--ghost" on:click={() => $unfoldAllInViewer()} disabled={!$selectedResult}>Expand all</button>
           {:else}
-            <span class="viewer-note">Große Datei: Syntax-Highlighting &amp; Falten deaktiviert (Performance)</span>
+            <span class="viewer-note">Large file: syntax highlighting &amp; folding disabled (performance)</span>
           {/if}
         {/if}
       </div>

@@ -35,10 +35,10 @@
 
 <style>
   .filelist { list-style: none; margin: 0; padding: 0; overflow-y: auto; height: 100%; }
-  li { display: flex; gap: 8px; align-items: center; padding: 7px 10px; cursor: pointer; border-bottom: 1px solid var(--border); }
-  li.selected { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+  li { display: flex; gap: var(--sp-2); align-items: center; padding: var(--sp-2) var(--sp-3); cursor: pointer; border-bottom: 1px solid var(--border); }
+  li.selected { background: var(--sel); }
   .icon { width: 1em; font-weight: 700; }
   .icon.ok { color: var(--ok); } .icon.err { color: var(--err); } .icon.warn { color: var(--warn); }
   .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .empty { color: #888; cursor: default; }
+  .empty { color: var(--muted); cursor: default; }
 </style>

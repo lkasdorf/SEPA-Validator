@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0-beta.1] - 2026-06-21
+
+### Changed
+- **Visual redesign of the desktop app** toward a calm, instrument-like look:
+  - The toolbar is now a quiet neutral surface instead of a solid blue bar; the accent colour is a deliberate "ledger ink" blue (`#1f53c2`, lighter in dark mode), reserved for the single primary action, the selected file/tab, and the progress bar.
+  - One shared button system (primary / ghost / segmented control) replaces the three divergent button styles that existed across the toolbar, viewer bar, log filters, and dialogs.
+  - Structured payment data is now set in a monospace, tabular-figure "ledger" treatment: IBAN, BIC, creditor identifier, the `PmtInf` statistics table, transaction origins, schema namespaces/filenames, and log line locators all line up for scanning and copying.
+  - A spacing scale, a shared muted-text colour, and design tokens replace ad-hoc paddings and hard-coded greys.
+- **The entire UI is now in English** (tabs, dialogs, status, empty states) — the former German labels are gone. The payment tabs are now **Overview** and **Remittance** (previously *Übersicht* / *Verwendungszweck*), and the remittance CSV export uses English headers (`#;Origin;Remittance info`).
+
+### Accessibility
+- Visible keyboard-focus rings on all interactive controls (buttons, list rows, tabs, filters).
+- `prefers-reduced-motion` is now respected (animations and transitions are reduced).
+
 ## [2.0.0] - 2026-06-20
 
 ### Added
@@ -41,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release: native Windows GUI SEPA XML Validator (PowerShell/WinForms) with full XSD validation, drag & drop, file/folder selection, batch validation, and TXT export.
 - Bash CLI scripts for validation, batch validation, and renaming XML files by date/company/schema.
 
-[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.1.0-beta.1...HEAD
+[2.1.0-beta.1]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.0.0...v2.1.0-beta.1
 [2.0.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/lkasdorf/SEPA-Validator/releases/tag/v1.0.0

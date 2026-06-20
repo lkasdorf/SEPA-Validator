@@ -40,18 +40,18 @@ export async function exportRemittanceCsv(
   transactions: RemittanceEntry[],
   sourceFile: string
 ): Promise<void> {
-  const base = sourceFile.replace(/\.[^.]+$/, "") || "datei";
+  const base = sourceFile.replace(/\.[^.]+$/, "") || "file";
   const path = await save({
-    defaultPath: `Verwendungszweck_${base}_${stamp()}.csv`,
+    defaultPath: `Remittance_${base}_${stamp()}.csv`,
     filters: [{ name: "CSV", extensions: ["csv"] }],
   });
   if (!path) return;
   const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
-  let out = "#;Herkunft;Verwendungszweck\n";
+  let out = "#;Origin;Remittance info\n";
   transactions.forEach((t, i) => {
-    const herkunft = t.instrId ?? t.endToEndId ?? "";
-    const zweck = (t.ustrd ?? "").replace(/\r?\n/g, " ");
-    out += [i + 1, esc(herkunft), esc(zweck)].join(";") + "\n";
+    const origin = t.instrId ?? t.endToEndId ?? "";
+    const remittance = (t.ustrd ?? "").replace(/\r?\n/g, " ");
+    out += [i + 1, esc(origin), esc(remittance)].join(";") + "\n";
   });
   await writeTextFile(path, out);
 }

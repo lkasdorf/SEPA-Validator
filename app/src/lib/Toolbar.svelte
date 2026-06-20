@@ -64,20 +64,18 @@
 
 <header class="toolbar">
   <strong class="brand">SEPA XML Validator</strong>
-  <button on:click={pickFiles}>Select Files…</button>
-  <button on:click={pickFolder}>Select Folder…</button>
-  <button on:click={doExportTxt} disabled={$results.length === 0}>Export TXT</button>
-  <button on:click={doExportCsv} disabled={$results.length === 0}>Export CSV</button>
-  <button on:click={() => schemaDialogOpen.set(true)}>Schemas… {schemaTotal ? `(${schemaPresent}/${schemaTotal})` : ""}</button>
+  <button class="btn btn--primary" on:click={pickFiles}>Select Files…</button>
+  <button class="btn btn--ghost" on:click={pickFolder}>Select Folder…</button>
+  <button class="btn btn--ghost" on:click={doExportTxt} disabled={$results.length === 0}>Export TXT</button>
+  <button class="btn btn--ghost" on:click={doExportCsv} disabled={$results.length === 0}>Export CSV</button>
+  <button class="btn btn--ghost" on:click={() => schemaDialogOpen.set(true)}>Schemas… {schemaTotal ? `(${schemaPresent}/${schemaTotal})` : ""}</button>
   <span class="hint">or drag &amp; drop files here</span>
-  <button class="theme" on:click={toggleTheme} title="Toggle theme">◐</button>
+  <button class="btn btn--ghost theme" on:click={toggleTheme} title="Toggle theme" aria-label="Toggle theme">◐</button>
 </header>
 
 <style>
-  .toolbar { display: flex; gap: 10px; align-items: center; padding: 8px 12px; background: var(--accent); color: #fff; }
-  .brand { margin-right: 8px; }
-  .toolbar button { background: rgba(255,255,255,0.15); color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
-  .toolbar button:hover { background: rgba(255,255,255,0.28); }
-  .hint { opacity: 0.85; font-size: 12px; }
-  .theme { margin-left: auto; }
+  .toolbar { display: flex; gap: var(--sp-2); align-items: center; padding: var(--sp-2) var(--sp-3); background: var(--chrome); color: var(--fg); border-bottom: 1px solid var(--border); }
+  .brand { margin-right: var(--sp-2); padding-left: var(--sp-2); font-weight: 600; letter-spacing: .01em; border-left: 3px solid var(--accent); }
+  .hint { color: var(--muted); font-size: 12px; }
+  .theme { margin-left: auto; font-size: 14px; }
 </style>
