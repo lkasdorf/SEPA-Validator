@@ -6,7 +6,12 @@
 
   async function doExport() {
     const tx = ps.data?.transactions ?? [];
-    if (tx.length) await exportRemittanceCsv(tx, $selectedResult?.file ?? "datei");
+    if (!tx.length) return;
+    try {
+      await exportRemittanceCsv(tx, $selectedResult?.file ?? "datei");
+    } catch (e) {
+      console.error("Verwendungszweck-Export fehlgeschlagen:", e);
+    }
   }
 </script>
 
