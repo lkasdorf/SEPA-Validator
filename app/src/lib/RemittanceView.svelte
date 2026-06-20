@@ -1,7 +1,13 @@
 <script lang="ts">
   import { selectedResult } from "./stores";
   import { paymentSummary } from "./paymentSummary";
+  import { exportRemittanceCsv } from "./export";
   $: ps = $paymentSummary;
+
+  async function doExport() {
+    const tx = ps.data?.transactions ?? [];
+    if (tx.length) await exportRemittanceCsv(tx, $selectedResult?.file ?? "datei");
+  }
 </script>
 
 <div class="summary">
@@ -19,15 +25,21 @@
       {#if missing > 0}
         <p class="warn-banner">⚠ {missing} von {total} Transaktionen ohne Verwendungszweck</p>
       {/if}
-      <ol class="ustrd">
-        {#each data.transactions as t}
-          {#if t.ustrd == null}
-            <li class="missing">⚠ kein Verwendungszweck</li>
-          {:else}
-            <li>{t.ustrd}</li>
-          {/if}
-        {/each}
-      </ol>
+      <div class="rmt-toolbar">
+        <button on:click={doExport}>Export CSV</button>
+      </div>
+      <table>
+        <thead><tr><th>#</th><th>Herkunft</th><th>Verwendungszweck</th></tr></thead>
+        <tbody>
+          {#each data.transactions as t, i}
+            <tr>
+              <td>{i + 1}</td>
+              <td>{t.instrId ?? t.endToEndId ?? "—"}</td>
+              <td class={t.ustrd == null ? "missing" : ""}>{t.ustrd ?? "⚠ kein Verwendungszweck"}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
     {/if}
   {:else}
     <p class="muted">Lädt…</p>
@@ -46,7 +58,12 @@
     font-size: 12px;
     margin: 0 0 10px;
   }
-  ol.ustrd { margin: 0; padding-left: 22px; font-size: 13px; }
-  ol.ustrd li { padding: 2px 0; word-break: break-word; white-space: pre-wrap; }
-  ol.ustrd li.missing { color: var(--err); font-style: italic; }
+  .rmt-toolbar { margin: 0 0 8px; }
+  .rmt-toolbar button { background: var(--accent); color: #fff; border: none; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  .rmt-toolbar button:hover { filter: brightness(1.1); }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-weight: 600; }
+  td { word-break: break-word; white-space: pre-wrap; }
+  td.missing { color: var(--err); font-style: italic; }
 </style>
