@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-19
+
+### Added
+- **Swiss Payment Standards (SIX)**: validates Swiss credit transfers (`pain.001.001.09.ch.03`), Swiss direct debits (`pain.008.001.02.ch.03`), and Swiss SEPA direct debits (`pain.008.001.02.chsdd.02`). The Swiss pain.001 shares the ISO namespace, so the app checks each file: the Swiss schema is used when the first debtor IBAN is `CH`/`LI` or `xsi:schemaLocation` names a `.ch.` schema.
+- Schemas… dialog: **Download CH…** opens the SIX schema page (the existing button is now **Download DE…**).
+
 ## [2.1.0] - 2026-06-21
 
 ### Added
@@ -60,7 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release: native Windows GUI SEPA XML Validator (PowerShell/WinForms) with full XSD validation, drag & drop, file/folder selection, batch validation, and TXT export.
 - Bash CLI scripts for validation, batch validation, and renaming XML files by date/company/schema.
 
-[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/lkasdorf/SEPA-Validator/releases/tag/v1.0.0
