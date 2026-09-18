@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 
 use libxml::parser::Parser;
 use libxml::schemas::{SchemaParserContext, SchemaValidationContext};
-use quick_xml::events::Event;
+use quick_xml::events::{BytesStart, Event};
 use quick_xml::name::ResolveResult;
-use quick_xml::reader::NsReader;
+use quick_xml::reader::{NsReader, Reader};
 
 use crate::formatting::format_xml;
 use crate::model::{Message, Severity, Status, ValidationResult};
@@ -26,6 +26,61 @@ pub fn detect_namespace(path: &Path) -> Option<String> {
             Err(_) => return None,
         }
     }
+}
+
+/// True if the file targets a Swiss/Liechtenstein bank, i.e. the Swiss Payment
+/// Standards apply: the root's `xsi:schemaLocation` names a `.ch.` schema, or the
+/// first debtor account (`DbtrAcct/Id/IBAN`) is a CH/LI IBAN. Creditor accounts
+/// don't count (a German debtor paying a Swiss creditor is not a Swiss file).
+/// Reading stops at the first debtor account, so large files aren't read in full.
+pub fn is_swiss(path: &Path) -> bool {
+    let Ok(mut reader) = Reader::from_file(path) else {
+        return false;
+    };
+    reader.config_mut().trim_text(true);
+    let mut buf = Vec::new();
+    let mut stack: Vec<Vec<u8>> = Vec::new();
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => {
+                let name = e.local_name().as_ref().to_vec();
+                if stack.is_empty() && root_names_swiss_schema(&e) {
+                    return true;
+                }
+                if name == b"CdtTrfTxInf" {
+                    return false; // past the first debtor account
+                }
+                stack.push(name);
+            }
+            Ok(Event::Empty(e)) => {
+                if stack.is_empty() {
+                    return root_names_swiss_schema(&e);
+                }
+            }
+            Ok(Event::End(e)) => {
+                if e.local_name().as_ref() == b"DbtrAcct" {
+                    return false; // debtor account without an IBAN
+                }
+                stack.pop();
+            }
+            Ok(Event::Text(t)) => {
+                if stack.ends_with(&[b"DbtrAcct".to_vec(), b"Id".to_vec(), b"IBAN".to_vec()]) {
+                    let iban = t.unescape().unwrap_or_default().to_ascii_uppercase();
+                    return iban.starts_with("CH") || iban.starts_with("LI");
+                }
+            }
+            Ok(Event::Eof) | Err(_) => return false,
+            Ok(_) => {}
+        }
+    }
+}
+
+fn root_names_swiss_schema(root: &BytesStart) -> bool {
+    root.attributes().flatten().any(|a| {
+        a.key.local_name().as_ref() == b"schemaLocation"
+            && String::from_utf8_lossy(&a.value).contains(".ch.")
+    })
 }
 
 /// Holds a per-run cache of compiled schemas. Not Send (wraps libxml2 pointers):
@@ -105,7 +160,8 @@ impl Validator {
             }
         };
 
-        let schema_name = match schema::lookup(&ns) {
+        let swiss = schema::has_swiss_variant(&ns) && is_swiss(path);
+        let schema_name = match schema::resolve(&ns, swiss) {
             Some(name) => name,
             None => {
                 return mk(
@@ -141,7 +197,7 @@ impl Validator {
         }
 
         if !self.cache.contains_key(schema_name) {
-            match self.compile(&ns) {
+            match self.compile(schema_name) {
                 Ok(ctx) => {
                     self.cache.insert(schema_name, ctx);
                 }
@@ -211,8 +267,7 @@ impl Validator {
         ValidationResult::from_messages(file, path_str, ns, schema_name.to_string(), messages)
     }
 
-    fn compile(&self, namespace: &str) -> Result<SchemaValidationContext, String> {
-        let filename = schema::lookup(namespace).ok_or("schema not found")?;
+    fn compile(&self, filename: &str) -> Result<SchemaValidationContext, String> {
         let path = self.schema_dir.join(filename);
         let path_str = path.to_str().ok_or("schema path is not valid UTF-8")?;
         let mut parser = SchemaParserContext::from_file(path_str);
@@ -278,6 +333,104 @@ mod tests {
     fn returns_none_for_garbage() {
         let p = temp_xml("not xml at all <<<");
         assert_eq!(detect_namespace(&p), None);
+    }
+
+    /// Temp file with a caller-chosen name (avoids clashes between same-length fixtures).
+    fn temp_named(tag: &str, contents: &str) -> std::path::PathBuf {
+        let p = std::env::temp_dir().join(format!("sepa_swiss_test_{tag}.xml"));
+        std::fs::write(&p, contents).unwrap();
+        p
+    }
+
+    /// Minimal pain.001.001.09 skeleton: debtor IBAN, creditor IBAN, root attributes.
+    fn pain001(root_attrs: &str, debtor_iban: &str, creditor_iban: &str) -> String {
+        format!(
+            r#"<?xml version="1.0"?><Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09" {root_attrs}><CstmrCdtTrfInitn><PmtInf><PmtInfId>P1</PmtInfId><Dbtr><Nm>A</Nm></Dbtr><DbtrAcct><Id><IBAN>{debtor_iban}</IBAN></Id></DbtrAcct><CdtTrfTxInf><CdtrAcct><Id><IBAN>{creditor_iban}</IBAN></Id></CdtrAcct></CdtTrfTxInf></PmtInf></CstmrCdtTrfInitn></Document>"#
+        )
+    }
+
+    #[test]
+    fn swiss_debtor_iban_is_swiss() {
+        let p = temp_named("ch_debtor", &pain001("", "CH9300762011623852957", "DE89370400440532013000"));
+        assert!(is_swiss(&p));
+    }
+
+    #[test]
+    fn liechtenstein_debtor_iban_is_swiss() {
+        let p = temp_named("li_debtor", &pain001("", "LI21088100002324013AA", "DE89370400440532013000"));
+        assert!(is_swiss(&p));
+    }
+
+    #[test]
+    fn german_debtor_paying_swiss_creditor_is_not_swiss() {
+        let p = temp_named("de_debtor", &pain001("", "DE89370400440532013000", "CH9300762011623852957"));
+        assert!(!is_swiss(&p));
+    }
+
+    #[test]
+    fn swiss_schema_location_is_swiss() {
+        let attrs = r#"xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09 pain.001.001.09.ch.03.xsd""#;
+        let p = temp_named("ch_location", &pain001(attrs, "DE89370400440532013000", "DE89370400440532013000"));
+        assert!(is_swiss(&p));
+    }
+
+    #[test]
+    fn swiss_file_resolves_to_swiss_schema() {
+        let empty = std::env::temp_dir().join("sepa_swiss_test_empty_schemas");
+        std::fs::create_dir_all(&empty).unwrap();
+        let mut v = super::Validator::new(empty);
+
+        let ch = temp_named("resolve_ch", &pain001("", "CH9300762011623852957", "CH9300762011623852957"));
+        let r = v.validate_file(&ch);
+        assert_eq!(r.schema, "pain.001.001.09.ch.03.xsd");
+        assert_eq!(r.status, Status::NoSchema);
+
+        let de = temp_named("resolve_de", &pain001("", "DE89370400440532013000", "CH9300762011623852957"));
+        assert_eq!(v.validate_file(&de).schema, "pain.001.001.09.xsd");
+    }
+
+    #[test]
+    fn swiss_credit_transfer_validates_against_swiss_schema() {
+        let dir = repo_root().join("xml_schema").join("ch");
+        if !dir.join("pain.001.001.09.ch.03.xsd").exists() {
+            eprintln!("SKIP: xml_schema/ch/pain.001.001.09.ch.03.xsd absent");
+            return;
+        }
+        let p = temp_named(
+            "ch_valid",
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09"><CstmrCdtTrfInitn>
+<GrpHdr><MsgId>MSG-CH-1</MsgId><CreDtTm>2026-09-19T10:00:00</CreDtTm><NbOfTxs>1</NbOfTxs><CtrlSum>100.00</CtrlSum><InitgPty><Nm>Muster AG</Nm></InitgPty></GrpHdr>
+<PmtInf><PmtInfId>PMT-1</PmtInfId><PmtMtd>TRF</PmtMtd><ReqdExctnDt><Dt>2026-09-21</Dt></ReqdExctnDt>
+<Dbtr><Nm>Muster AG</Nm></Dbtr><DbtrAcct><Id><IBAN>CH9300762011623852957</IBAN></Id></DbtrAcct>
+<DbtrAgt><FinInstnId><BICFI>UBSWCHZH80A</BICFI></FinInstnId></DbtrAgt>
+<CdtTrfTxInf><PmtId><InstrId>INSTR-1</InstrId><EndToEndId>E2E-1</EndToEndId></PmtId>
+<Amt><InstdAmt Ccy="CHF">100.00</InstdAmt></Amt><Cdtr><Nm>Beispiel GmbH</Nm></Cdtr>
+<CdtrAcct><Id><IBAN>CH5604835012345678009</IBAN></Id></CdtrAcct></CdtTrfTxInf>
+</PmtInf></CstmrCdtTrfInitn></Document>"#,
+        );
+        let r = super::Validator::new(dir).validate_file(&p);
+        assert_eq!(r.schema, "pain.001.001.09.ch.03.xsd");
+        assert_eq!(r.status, Status::Ok, "messages: {:?}", r.messages);
+    }
+
+    #[test]
+    fn official_swiss_direct_debit_examples_are_ok() {
+        let dir = repo_root().join("xml_schema").join("ch");
+        let examples = dir.join("examples");
+        if !examples.exists() {
+            eprintln!("SKIP: xml_schema/ch/examples absent");
+            return;
+        }
+        let mut v = super::Validator::new(dir);
+        for (file, schema) in [
+            ("pain_008_Swiss-DD_Beispiel_1.xml", "pain.008.001.02.ch.03.xsd"),
+            ("pain_008_Beispiel_1.xml", "pain.008.001.02.chsdd.02.xsd"),
+        ] {
+            let r = v.validate_file(&examples.join(file));
+            assert_eq!(r.schema, schema);
+            assert_eq!(r.status, Status::Ok, "{file}: {:?}", r.messages);
+        }
     }
 
     use crate::model::Status;

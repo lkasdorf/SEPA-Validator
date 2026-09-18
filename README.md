@@ -67,6 +67,16 @@ The desktop app and CLI recognise these namespaces (provide the matching XSD via
 | camt.054.001.08 | Bank-to-customer debit/credit notification |
 | container.nnn.001.GBIC4 | DK/GBIC container |
 
+### Swiss Payment Standards (desktop app only)
+
+| Format | Description |
+|--------|-------------|
+| pain.001.001.09.ch.03 | Swiss credit transfer (SPS 2025/2026) |
+| pain.008.001.02.ch.03 | Swiss direct debit (CH-DD / LSV+) |
+| pain.008.001.02.chsdd.02 | SEPA direct debit, Swiss variant |
+
+The Swiss pain.008 variants have their own namespaces. The Swiss pain.001 shares the ISO namespace with the standard pain.001.001.09, so the app picks the Swiss schema per file: when the first debtor account (`DbtrAcct` IBAN) is Swiss or Liechtenstein (`CH…`/`LI…`), or when `xsi:schemaLocation` names a `.ch.` schema. Creditor accounts don't count, so a German payer sending money to a Swiss account is still checked against the standard schema. The result shows which schema was used.
+
 ## Obtaining XSD schemas
 
 This tool requires XSD schema files for validation. Schemas are **not included** in this repository — download them from the official sources:
@@ -76,6 +86,7 @@ This tool requires XSD schema files for validation. Schemas are **not included**
 | ISO 20022 | pain.001, pain.002, pain.008, camt.054, … | [iso20022.org](https://www.iso20022.org/catalogue-of-iso-20022-messages) |
 | Deutsche Kreditwirtschaft (DK) | GBIC variants for German SEPA | [die-dk.de](https://die-dk.de/themen/zahlungsverkehr/) |
 | EBICS (Germany) | German SEPA data formats & schemas | [ebics.de](https://www.ebics.de/de/datenformate) |
+| SIX (Switzerland) | Swiss Payment Standards (`.ch.` schemas) | [six-group.com](https://www.six-group.com/en/products-services/banking-services/payment-standardization/standards/iso-20022.html) |
 | EPC | EPC SEPA scheme rulebooks | [europeanpaymentscouncil.eu](https://www.europeanpaymentscouncil.eu/document-library) |
 
 For the **desktop app**, import the downloaded files via the **Schemas…** dialog. For the **CLI / PowerShell** tools, place the `.xsd` files in `xml_schema/` (or pass `--schema-dir`).

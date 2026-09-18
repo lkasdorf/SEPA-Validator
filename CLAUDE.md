@@ -25,7 +25,7 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```sh
 cd app && npm install
 npx tauri dev                      # run with hot-reload
-cd src-tauri && cargo test         # backend tests (15 unit + 2 spike)
+cd src-tauri && cargo test         # backend tests (unit + 2 spike)
 cd app && npx tauri build --no-bundle   # standalone exe -> src-tauri/target/release/app.exe
 ```
 First-time native setup (vcpkg+libxml2, libclang, local `.cargo/config.toml`) is in `app/README.md`.
@@ -56,7 +56,7 @@ Single-file PowerShell WinForms application. Key sections in order:
 
 Tauri v2 backend (Rust, `src-tauri/`) + Svelte 5/TypeScript/Vite frontend (`src/`).
 
-- **Backend modules** (`src-tauri/src/`): `model` (serde DTOs `ValidationResult`/`Status`/`Message`), `schema` (namespace→XSD filename map; no embedded bytes), `validator` (`detect_namespace` via quick-xml + `Validator` with a per-run compiled-schema cache loading XSDs at runtime from `app_data_dir()/schemas/`, mapping libxml `StructuredError` to located messages), `scanner` (recursive `.xml` expansion), `commands` (`start_validation`, `read_file`, `write_text_file`, `schema_status`, `import_schemas`, `open_schema_dir`).
+- **Backend modules** (`src-tauri/src/`): `model` (serde DTOs `ValidationResult`/`Status`/`Message`), `schema` (namespace→XSD filename map plus `SWISS_VARIANTS` for SPS schemas that share an ISO namespace, picked via `resolve(ns, swiss)`; no embedded bytes), `validator` (`detect_namespace` via quick-xml, `is_swiss` (first debtor IBAN CH/LI or `.ch.` schemaLocation) + `Validator` with a per-run compiled-schema cache loading XSDs at runtime from `app_data_dir()/schemas/`, mapping libxml `StructuredError` to located messages), `scanner` (recursive `.xml` expansion), `commands` (`start_validation`, `read_file`, `write_text_file`, `schema_status`, `import_schemas`, `open_schema_dir`).
 - **Live streaming**: `start_validation` runs on a worker thread (libxml types are not `Send`) and streams `ValidationEvent`s (started/result/finished) to the frontend over a `tauri::ipc::Channel`.
 - **XSD engine**: validation is done by **libxml2** (the `libxml` crate), not .NET — error wording differs from the PowerShell tool but verdicts are equivalent.
 - **Native build deps** (one-time, documented in `app/README.md`): vcpkg `libxml2:x64-windows-static-md`, `libclang` (PyPI wheel) for bindgen, and a **gitignored** `src-tauri/.cargo/config.toml` with `[env]` (`VCPKG_ROOT`, `VCPKGRS_TRIPLET`, `LIBCLANG_PATH`). `build.rs` links `bcrypt` (libxml2 ≥ 2.15 needs `BCryptGenRandom`). XSDs are no longer embedded; the app loads them at runtime from `app_data_dir()/schemas/`, imported via the **Schemas…** dialog.
