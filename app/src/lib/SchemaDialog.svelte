@@ -56,10 +56,12 @@
     }
   }
 
-  const DOWNLOAD_URL = "https://www.ebics.de/de/datenformate";
-  async function download() {
+  const DOWNLOAD_URL_DE = "https://www.ebics.de/de/datenformate";
+  const DOWNLOAD_URL_CH =
+    "https://www.six-group.com/en/products-services/banking-services/payment-standardization/standards/iso-20022.html";
+  async function download(url: string) {
     try {
-      await openUrl(DOWNLOAD_URL);
+      await openUrl(url);
     } catch {
       note = "Could not open download page.";
     }
@@ -73,7 +75,7 @@
       <strong>Schemas</strong>
       <button class="x" on:click={close} aria-label="Close">✕</button>
     </header>
-    <p class="hint">The XSDs are not bundled. Download them from the official source (ebics.de for DK/GBIC, iso20022.org for the ISO schemas) and import them here as ZIP or XSD.</p>
+    <p class="hint">The XSDs are not bundled. Download them from the official source (ebics.de for DK/GBIC, six-group.com for the Swiss Payment Standards, iso20022.org for the ISO schemas) and import them here as ZIP or XSD. Swiss pain.001 files (debtor IBAN CH/LI) are checked against the Swiss schema.</p>
     <div class="tablewrap">
       <table>
         <thead><tr><th>Namespace</th><th>File</th><th>Status</th></tr></thead>
@@ -90,7 +92,8 @@
     </div>
     {#if note}<p class="note">{note}</p>{/if}
     <footer>
-      <button class="btn btn--ghost" on:click={download}>Download…</button>
+      <button class="btn btn--ghost" on:click={() => download(DOWNLOAD_URL_DE)}>Download DE…</button>
+      <button class="btn btn--ghost" on:click={() => download(DOWNLOAD_URL_CH)}>Download CH…</button>
       <button class="btn btn--primary" on:click={importFiles} disabled={busy}>XSD/ZIP files…</button>
       <button class="btn btn--primary" on:click={importFolder} disabled={busy}>Folder…</button>
       <button class="btn btn--ghost" on:click={openFolder}>Open folder</button>
