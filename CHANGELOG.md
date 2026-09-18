@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Swiss Payment Standards (SIX)**: validates Swiss credit transfers (`pain.001.001.09.ch.03`), Swiss direct debits (`pain.008.001.02.ch.03`), and Swiss SEPA direct debits (`pain.008.001.02.chsdd.02`). The Swiss pain.001 shares the ISO namespace, so the app checks each file: the Swiss schema is used when the first debtor IBAN is `CH`/`LI` or `xsi:schemaLocation` names a `.ch.` schema.
+- Schemas… dialog: **Download CH…** opens the SIX schema page (the existing button is now **Download DE…**).
+
 ## [2.1.0] - 2026-06-21
 
 ### Added
