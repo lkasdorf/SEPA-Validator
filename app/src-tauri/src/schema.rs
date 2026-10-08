@@ -4,24 +4,55 @@
 
 /// Ordered namespace -> expected XSD filename (looked up in the schema dir).
 pub const SCHEMAS: &[(&str, &str)] = &[
-    ("urn:iso:std:iso:20022:tech:xsd:pain.001.001.03", "pain.001.001.03.xsd"),
-    ("urn:iso:std:iso:20022:tech:xsd:pain.001.001.09", "pain.001.001.09.xsd"),
-    ("urn:iso:std:iso:20022:tech:xsd:pain.002.001.10", "pain.002.001.10.xsd"),
-    ("urn:iso:std:iso:20022:tech:xsd:pain.007.001.09", "pain.007.001.09_GBIC_5.xsd"),
-    ("urn:iso:std:iso:20022:tech:xsd:pain.008.001.02", "pain.008.001.02.xsd"),
-    ("urn:iso:std:iso:20022:tech:xsd:pain.008.001.08", "pain.008.001.08.xsd"),
-    ("urn:iso:std:iso:20022:tech:xsd:camt.054.001.08", "camt.054.001.08.xsd"),
-    ("urn:conxml:xsd:container.nnn.001.GBIC4", "container.nnn.001.GBIC4.xsd"),
+    (
+        "urn:iso:std:iso:20022:tech:xsd:pain.001.001.03",
+        "pain.001.001.03.xsd",
+    ),
+    (
+        "urn:iso:std:iso:20022:tech:xsd:pain.001.001.09",
+        "pain.001.001.09.xsd",
+    ),
+    (
+        "urn:iso:std:iso:20022:tech:xsd:pain.002.001.10",
+        "pain.002.001.10.xsd",
+    ),
+    (
+        "urn:iso:std:iso:20022:tech:xsd:pain.007.001.09",
+        "pain.007.001.09_GBIC_5.xsd",
+    ),
+    (
+        "urn:iso:std:iso:20022:tech:xsd:pain.008.001.02",
+        "pain.008.001.02.xsd",
+    ),
+    (
+        "urn:iso:std:iso:20022:tech:xsd:pain.008.001.08",
+        "pain.008.001.08.xsd",
+    ),
+    (
+        "urn:iso:std:iso:20022:tech:xsd:camt.054.001.08",
+        "camt.054.001.08.xsd",
+    ),
+    (
+        "urn:conxml:xsd:container.nnn.001.GBIC4",
+        "container.nnn.001.GBIC4.xsd",
+    ),
     // Swiss Payment Standards (SIX) direct debits carry their own namespaces.
-    ("http://www.six-interbank-clearing.com/de/pain.008.001.02.ch.03.xsd", "pain.008.001.02.ch.03.xsd"),
-    ("http://www.six-interbank-clearing.com/de/pain.008.001.02.chsdd.02.xsd", "pain.008.001.02.chsdd.02.xsd"),
+    (
+        "http://www.six-interbank-clearing.com/de/pain.008.001.02.ch.03.xsd",
+        "pain.008.001.02.ch.03.xsd",
+    ),
+    (
+        "http://www.six-interbank-clearing.com/de/pain.008.001.02.chsdd.02.xsd",
+        "pain.008.001.02.chsdd.02.xsd",
+    ),
 ];
 
 /// Swiss Payment Standards variants that reuse a standard ISO namespace, so the
 /// namespace alone can't select them; the validator decides per file (`resolve`).
-pub const SWISS_VARIANTS: &[(&str, &str)] = &[
-    ("urn:iso:std:iso:20022:tech:xsd:pain.001.001.09", "pain.001.001.09.ch.03.xsd"),
-];
+pub const SWISS_VARIANTS: &[(&str, &str)] = &[(
+    "urn:iso:std:iso:20022:tech:xsd:pain.001.001.09",
+    "pain.001.001.09.ch.03.xsd",
+)];
 
 /// Returns the standard XSD filename for a namespace, if known.
 pub fn lookup(namespace: &str) -> Option<&'static str> {
@@ -47,7 +78,10 @@ pub fn known_schemas() -> Vec<(&'static str, &'static str)> {
 }
 
 fn find(table: &[(&str, &'static str)], namespace: &str) -> Option<&'static str> {
-    table.iter().find(|(ns, _)| *ns == namespace).map(|(_, name)| *name)
+    table
+        .iter()
+        .find(|(ns, _)| *ns == namespace)
+        .map(|(_, name)| *name)
 }
 
 #[cfg(test)]
@@ -95,15 +129,21 @@ mod tests {
 
     #[test]
     fn has_swiss_variant_only_for_pain001_09() {
-        assert!(has_swiss_variant("urn:iso:std:iso:20022:tech:xsd:pain.001.001.09"));
-        assert!(!has_swiss_variant("urn:iso:std:iso:20022:tech:xsd:pain.001.001.03"));
+        assert!(has_swiss_variant(
+            "urn:iso:std:iso:20022:tech:xsd:pain.001.001.09"
+        ));
+        assert!(!has_swiss_variant(
+            "urn:iso:std:iso:20022:tech:xsd:pain.001.001.03"
+        ));
     }
 
     #[test]
     fn known_schemas_lists_all_with_xsd_filenames() {
         let all = known_schemas();
         assert_eq!(all.len(), 11);
-        assert!(all.iter().any(|(_, name)| *name == "pain.001.001.09.ch.03.xsd"));
+        assert!(all
+            .iter()
+            .any(|(_, name)| *name == "pain.001.001.09.ch.03.xsd"));
         for (ns, name) in all {
             assert!(!ns.is_empty());
             assert!(name.ends_with(".xsd"));

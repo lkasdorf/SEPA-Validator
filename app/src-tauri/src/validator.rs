@@ -189,7 +189,9 @@ impl Validator {
                 schema_name.to_string(),
                 vec![Message {
                     severity: Severity::Warning,
-                    text: format!("Schema '{schema_name}' not imported. Open Schemas… to import it."),
+                    text: format!(
+                        "Schema '{schema_name}' not imported. Open Schemas… to import it."
+                    ),
                     line: None,
                     column: None,
                     hint: None,
@@ -416,26 +418,38 @@ mod tests {
 
     #[test]
     fn swiss_debtor_iban_is_swiss() {
-        let p = temp_named("ch_debtor", &pain001("", "CH9300762011623852957", "DE89370400440532013000"));
+        let p = temp_named(
+            "ch_debtor",
+            &pain001("", "CH9300762011623852957", "DE89370400440532013000"),
+        );
         assert!(is_swiss(&p));
     }
 
     #[test]
     fn liechtenstein_debtor_iban_is_swiss() {
-        let p = temp_named("li_debtor", &pain001("", "LI21088100002324013AA", "DE89370400440532013000"));
+        let p = temp_named(
+            "li_debtor",
+            &pain001("", "LI21088100002324013AA", "DE89370400440532013000"),
+        );
         assert!(is_swiss(&p));
     }
 
     #[test]
     fn german_debtor_paying_swiss_creditor_is_not_swiss() {
-        let p = temp_named("de_debtor", &pain001("", "DE89370400440532013000", "CH9300762011623852957"));
+        let p = temp_named(
+            "de_debtor",
+            &pain001("", "DE89370400440532013000", "CH9300762011623852957"),
+        );
         assert!(!is_swiss(&p));
     }
 
     #[test]
     fn swiss_schema_location_is_swiss() {
         let attrs = r#"xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09 pain.001.001.09.ch.03.xsd""#;
-        let p = temp_named("ch_location", &pain001(attrs, "DE89370400440532013000", "DE89370400440532013000"));
+        let p = temp_named(
+            "ch_location",
+            &pain001(attrs, "DE89370400440532013000", "DE89370400440532013000"),
+        );
         assert!(is_swiss(&p));
     }
 
@@ -445,12 +459,18 @@ mod tests {
         std::fs::create_dir_all(&empty).unwrap();
         let mut v = super::Validator::new(empty);
 
-        let ch = temp_named("resolve_ch", &pain001("", "CH9300762011623852957", "CH9300762011623852957"));
+        let ch = temp_named(
+            "resolve_ch",
+            &pain001("", "CH9300762011623852957", "CH9300762011623852957"),
+        );
         let r = v.validate_file(&ch);
         assert_eq!(r.schema, "pain.001.001.09.ch.03.xsd");
         assert_eq!(r.status, Status::NoSchema);
 
-        let de = temp_named("resolve_de", &pain001("", "DE89370400440532013000", "CH9300762011623852957"));
+        let de = temp_named(
+            "resolve_de",
+            &pain001("", "DE89370400440532013000", "CH9300762011623852957"),
+        );
         assert_eq!(v.validate_file(&de).schema, "pain.001.001.09.xsd");
     }
 
@@ -489,7 +509,10 @@ mod tests {
         }
         let mut v = super::Validator::new(dir);
         for (file, schema) in [
-            ("pain_008_Swiss-DD_Beispiel_1.xml", "pain.008.001.02.ch.03.xsd"),
+            (
+                "pain_008_Swiss-DD_Beispiel_1.xml",
+                "pain.008.001.02.ch.03.xsd",
+            ),
             ("pain_008_Beispiel_1.xml", "pain.008.001.02.chsdd.02.xsd"),
         ] {
             let r = v.validate_file(&examples.join(file));

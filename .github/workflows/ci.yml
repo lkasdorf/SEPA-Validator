@@ -84,7 +84,11 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
+
+      - name: Rustfmt
+        working-directory: app/src-tauri
+        run: cargo fmt --check
 
       - uses: Swatinem/rust-cache@v2
         with:
