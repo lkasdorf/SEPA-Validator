@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pii-guard:
+    name: PII guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # check every commit of the PR/push, not just the final tree
+      - name: No XML/XSD outside test fixtures
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: bash scripts/pii-guard.sh "$BASE"
+
+  app:
+    name: Build & test (Windows)
+    runs-on: windows-latest
+    env:
+      # Same vcpkg commit (libxml2 2.15.3) as the local setup in app/README.md.
+      VCPKG_COMMIT: 776a31fc8d3659de2c9cca4364062be5bbdf3857
+      VCPKGRS_TRIPLET: x64-windows-static-md
+      LIBCLANG_VERSION: 18.1.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Frontend - install, svelte-check, vitest, build
+        working-directory: app
+        run: |
+          npm ci
+          npm run check
+          npm test
+          npm run build
+
+      # libxml2 is built once per vcpkg commit; later runs restore the binary package.
+      - name: Cache vcpkg binary packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-bincache
+          key: vcpkg-${{ env.VCPKG_COMMIT }}-${{ env.VCPKGRS_TRIPLET }}-libxml2
+
+      - name: libxml2 via vcpkg (pinned)
+        shell: pwsh
+        run: |
+          $vcpkg = Join-Path $env:RUNNER_TEMP 'vcpkg'
+          $cache = Join-Path $env:RUNNER_TEMP 'vcpkg-bincache'
+          git init -q $vcpkg
+          git -C $vcpkg fetch -q --depth 1 https://github.com/microsoft/vcpkg $env:VCPKG_COMMIT
+          git -C $vcpkg checkout -q FETCH_HEAD
+          & "$vcpkg\bootstrap-vcpkg.bat" -disableMetrics
+          New-Item -ItemType Directory -Force $cache | Out-Null
+          & "$vcpkg\vcpkg.exe" install "libxml2:$env:VCPKGRS_TRIPLET" --binarysource="clear;files,$cache,readwrite"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "VCPKG_ROOT=$vcpkg" >> $env:GITHUB_ENV
+
+      - name: libclang for bindgen
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'libclang'
+          python -m pip install --disable-pip-version-check -q "libclang==$env:LIBCLANG_VERSION" --target $dir
+          "LIBCLANG_PATH=$dir\clang\native" >> $env:GITHUB_ENV
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
+
+      - name: Clippy
+        working-directory: app/src-tauri
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Tests
+        working-directory: app/src-tauri
+        run: cargo test --locked
