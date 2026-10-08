@@ -3,6 +3,7 @@ mod formatting;
 mod messages;
 mod model;
 mod payments;
+mod plausibility;
 mod scanner;
 mod schema;
 mod validator;
