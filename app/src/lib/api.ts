@@ -16,6 +16,11 @@ export function cancelValidation(): Promise<void> {
   return invoke("cancel_validation");
 }
 
+/** Write the formatted XML of `source` to `target` (formatted in the backend). */
+export function saveFormatted(source: string, target: string): Promise<void> {
+  return invoke("save_formatted", { source, target });
+}
+
 export function readFormatted(path: string): Promise<string> {
   return invoke<string>("read_formatted", { path });
 }

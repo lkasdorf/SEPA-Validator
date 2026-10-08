@@ -156,14 +156,38 @@ fn crashed_result(file: &Path, payload: &(dyn std::any::Any + Send)) -> Validati
 /// Write an export (chosen via the save dialog) to disk; see `check_export_path`.
 #[tauri::command]
 pub fn write_text_file(path: String, contents: String) -> Result<(), String> {
-    let path = check_export_path(&path)?;
+    let path = check_export_path(&path, &["txt", "csv"])?;
     std::fs::write(path, contents).map_err(|e| e.to_string())
 }
 
-/// Exports may only create `.txt`/`.csv` files in an existing folder on a local
-/// drive: no other extensions (nothing the webview could write and later run),
-/// no UNC/device paths, no alternate data streams. (Windows-only app.)
-fn check_export_path(path: &str) -> Result<PathBuf, String> {
+/// Save the pretty-printed XML of `source` (as shown in the viewer) to `target`.
+#[tauri::command]
+pub fn save_formatted(source: String, target: String) -> Result<(), String> {
+    write_formatted_copy(Path::new(&source), &target)
+}
+
+/// Formats `source` in the backend (the webview only names the files) and writes
+/// it to `target`: an `.xml` path per `check_export_path`, never the original
+/// itself. Formatting only re-indents between tags; values stay byte-identical.
+fn write_formatted_copy(source: &Path, target: &str) -> Result<(), String> {
+    let target = check_export_path(target, &["xml"])?;
+    let same_file = std::fs::canonicalize(source)
+        .ok()
+        .is_some_and(|s| std::fs::canonicalize(&target).ok() == Some(s));
+    if same_file {
+        return Err("Save the formatted file as a copy; the original stays untouched.".into());
+    }
+    let formatted = crate::formatting::format_xml(source).map_err(|e| match e.line {
+        Some(line) => format!("Cannot format: {} (line {line})", e.message),
+        None => format!("Cannot format: {}", e.message),
+    })?;
+    std::fs::write(target, formatted).map_err(|e| e.to_string())
+}
+
+/// Exports may only create files with one of `extensions` in an existing folder
+/// on a local drive: nothing the webview could write and later run, no UNC or
+/// device paths, no alternate data streams. (Windows-only app.)
+fn check_export_path(path: &str, extensions: &[&str]) -> Result<PathBuf, String> {
     use std::path::{Component, Prefix};
     let refuse = || format!("Refusing to write to {path}");
     let p = PathBuf::from(path);
@@ -178,7 +202,7 @@ fn check_export_path(path: &str) -> Result<PathBuf, String> {
     let export_ext = Path::new(name)
         .extension()
         .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("txt") || e.eq_ignore_ascii_case("csv"));
+        .is_some_and(|e| extensions.iter().any(|x| e.eq_ignore_ascii_case(x)));
     if !export_ext || name.contains(':') || !p.parent().is_some_and(Path::is_dir) {
         return Err(refuse());
     }
@@ -656,7 +680,7 @@ mod tests {
         let dir = fresh_dir("sepa_export_ok");
         for name in ["report.csv", "report.TXT"] {
             let p = dir.join(name).display().to_string();
-            assert!(check_export_path(&p).is_ok(), "{p}");
+            assert!(check_export_path(&p, &["txt", "csv"]).is_ok(), "{p}");
         }
     }
 
@@ -675,7 +699,7 @@ mod tests {
             r"\\attacker\share\report.csv".to_string(),
             r"\\.\C:\report.csv".to_string(),
         ] {
-            assert!(check_export_path(&p).is_err(), "{p}");
+            assert!(check_export_path(&p, &["txt", "csv"]).is_err(), "{p}");
         }
     }
 
@@ -729,5 +753,48 @@ mod tests {
             1,
             "no partial files"
         );
+    }
+
+    #[test]
+    fn save_formatted_writes_an_indented_copy() {
+        let dir = fresh_dir("sepa_save_fmt_ok");
+        let src = dir.join("in.xml");
+        write_file(&src, r#"<?xml version="1.0"?><a><b> x </b><c></c></a>"#);
+        let target = dir.join("in_formatted.xml");
+        write_formatted_copy(&src, &target.display().to_string()).unwrap();
+        let out = std::fs::read_to_string(&target).unwrap();
+        assert_eq!(out, crate::formatting::format_xml(&src).unwrap());
+        assert!(out.lines().count() > 2, "got:\n{out}");
+    }
+
+    #[test]
+    fn save_formatted_never_overwrites_the_original() {
+        let dir = fresh_dir("sepa_save_fmt_same");
+        let src = dir.join("in.xml");
+        let original = r#"<?xml version="1.0"?><a><b>1</b></a>"#;
+        write_file(&src, original);
+        assert!(write_formatted_copy(&src, &src.display().to_string()).is_err());
+        assert_eq!(std::fs::read_to_string(&src).unwrap(), original);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn save_formatted_only_writes_xml_files() {
+        let dir = fresh_dir("sepa_save_fmt_ext");
+        let src = dir.join("in.xml");
+        write_file(&src, "<a/>");
+        let target = dir.join("evil.bat");
+        assert!(write_formatted_copy(&src, &target.display().to_string()).is_err());
+        assert!(!target.exists());
+    }
+
+    #[test]
+    fn save_formatted_refuses_malformed_files() {
+        let dir = fresh_dir("sepa_save_fmt_bad");
+        let src = dir.join("in.xml");
+        write_file(&src, "<a><b>");
+        let target = dir.join("out.xml");
+        assert!(write_formatted_copy(&src, &target.display().to_string()).is_err());
+        assert!(!target.exists());
     }
 }
