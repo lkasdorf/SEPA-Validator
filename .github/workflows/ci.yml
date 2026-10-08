@@ -24,6 +24,8 @@ jobs:
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: bash scripts/pii-guard.sh "$BASE"
+      - name: Release helper tests
+        run: node --test scripts/release.test.mjs
 
   app:
     name: Build & test (Windows)

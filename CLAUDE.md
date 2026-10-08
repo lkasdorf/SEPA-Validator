@@ -87,6 +87,7 @@ Reads XSD files from `xml_schema/`, GZip-compresses and Base64-encodes them, inj
 `.github/workflows/ci.yml` runs on every PR and push to master:
 - **PII guard** (ubuntu): `scripts/pii-guard.sh <base>` fails on any `.xml`/`.xsd` outside `app/src-tauri/tests/fixtures/`, including files added and later deleted within the PR. Never commit payment files or ISO/SIX schemas; put synthetic test data in `tests/fixtures/`.
 - **Build & test** (windows): `npm run check`, `npm test`, `npm run build`, then `cargo clippy --all-targets -- -D warnings` and `cargo test`. libxml2 comes from vcpkg pinned to the same commit as the local setup and is cached as a vcpkg binary package.
+- **Release** (`release.yml`, on tag `v*`): signed NSIS build via `tauri-action`, draft release with installer, `.sig`, `latest.json` and portable exe. Version single source: `"version"` in `app/src-tauri/tauri.conf.json`; bump with `node scripts/bump-version.mjs X.Y.Z`. Full procedure, environment and signing-key handling: `RELEASING.md`.
 - `claude-review` (separate workflow) only posts a review comment; a green check does not always mean it reviewed.
 
 ## Conventions
