@@ -31,9 +31,12 @@ build tools. After this one-time setup, builds are fast.
    ```sh
    git clone --depth 1 https://github.com/microsoft/vcpkg "%USERPROFILE%\vcpkg"
    "%USERPROFILE%\vcpkg\bootstrap-vcpkg.bat"
-   "%USERPROFILE%\vcpkg\vcpkg.exe" install libxml2:x64-windows-static-md
+   "%USERPROFILE%\vcpkg\vcpkg.exe" install "libxml2[core,zlib]:x64-windows-static-md"
    ```
    (vcpkg downloads its own CMake/Ninja — a system CMake is not required.)
+   `[core,zlib]` leaves out the default `iconv` feature, which would statically link
+   LGPL libiconv; CI and the release workflow build it the same way. If you installed
+   plain `libxml2` earlier: `vcpkg remove libxml2 libiconv` and install again as above.
 5. **libclang** (the `libxml` crate runs bindgen). The lightest no-admin option
    is the PyPI wheel:
    ```sh
