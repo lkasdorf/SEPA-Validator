@@ -1,0 +1,139 @@
+name: Release
+
+# Push a tag vX.Y.Z (matching app/src-tauri/tauri.conf.json, see RELEASING.md) to
+# build, sign and upload a DRAFT release; publish it after a smoke test.
+# "Run workflow" (workflow_dispatch) does a dry run: build and sign, then keep the
+# bundles as workflow artifacts instead of creating a release.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, sign & draft release
+    runs-on: windows-latest
+    # Holds the signing key; add yourself as a required reviewer so every
+    # signing run needs your approval.
+    environment: release
+    env:
+      VCPKG_COMMIT: 776a31fc8d3659de2c9cca4364062be5bbdf3857
+      VCPKGRS_TRIPLET: x64-windows-static-md
+      LIBCLANG_VERSION: 18.1.1
+      IS_TAG: ${{ github.ref_type == 'tag' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Version and release notes
+        id: meta
+        shell: bash
+        run: |
+          version=$(node -p "require('./app/src-tauri/tauri.conf.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$IS_TAG" = "true" ]; then
+            if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match version $version in tauri.conf.json (run scripts/bump-version.mjs first)."
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+              echo "::error::Tag $GITHUB_REF_NAME is not on master."
+              exit 1
+            fi
+          fi
+          {
+            echo "notes<<RELEASE_NOTES_EOF"
+            node scripts/release-notes.mjs "$version"
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Cache vcpkg binary packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-bincache
+          key: vcpkg-${{ env.VCPKG_COMMIT }}-${{ env.VCPKGRS_TRIPLET }}-libxml2
+
+      - name: libxml2 via vcpkg (pinned)
+        shell: pwsh
+        run: |
+          $vcpkg = Join-Path $env:RUNNER_TEMP 'vcpkg'
+          $cache = Join-Path $env:RUNNER_TEMP 'vcpkg-bincache'
+          git init -q $vcpkg
+          git -C $vcpkg fetch -q --depth 1 https://github.com/microsoft/vcpkg $env:VCPKG_COMMIT
+          git -C $vcpkg checkout -q FETCH_HEAD
+          & "$vcpkg\bootstrap-vcpkg.bat" -disableMetrics
+          New-Item -ItemType Directory -Force $cache | Out-Null
+          & "$vcpkg\vcpkg.exe" install "libxml2:$env:VCPKGRS_TRIPLET" --binarysource="clear;files,$cache,readwrite"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "VCPKG_ROOT=$vcpkg" >> $env:GITHUB_ENV
+
+      - name: libclang for bindgen
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'libclang'
+          python -m pip install --disable-pip-version-check -q "libclang==$env:LIBCLANG_VERSION" --target $dir
+          "LIBCLANG_PATH=$dir\clang\native" >> $env:GITHUB_ENV
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
+
+      # Builds the NSIS installer, signs it for the updater, and (for tags) creates
+      # the draft release with the installer, its .sig and latest.json.
+      - name: Build, sign and upload
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: app
+          args: --bundles nsis
+          tagName: ${{ env.IS_TAG == 'true' && github.ref_name || '' }}
+          releaseName: ${{ env.IS_TAG == 'true' && format('SEPA Validator {0}', github.ref_name) || '' }}
+          releaseBody: ${{ steps.meta.outputs.notes }}
+          releaseDraft: true
+          releaseAssetNamePattern: SEPA-Validator-[version]-windows-x64[setup][ext]
+          updaterJsonPreferNsis: true
+          uploadWorkflowArtifacts: ${{ env.IS_TAG != 'true' }}
+
+      - name: Portable exe
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          portable="SEPA-Validator-$VERSION-windows-x64-portable.exe"
+          cp app/src-tauri/target/release/app.exe "$portable"
+          if [ "$IS_TAG" = "true" ]; then
+            gh release upload "$GITHUB_REF_NAME" "$portable" --clobber
+          else
+            echo "PORTABLE=$portable" >> "$GITHUB_ENV"
+          fi
+
+      - name: Keep the portable exe (dry run)
+        if: env.IS_TAG != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: portable
+          path: ${{ env.PORTABLE }}
