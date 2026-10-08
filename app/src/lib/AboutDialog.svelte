@@ -25,10 +25,21 @@
   const licenses: [string, string][] = [
     ["Tauri", "MIT / Apache-2.0"],
     ["Svelte", "MIT"],
-    ["CodeMirror 6", "MIT"],
-    ["libxml2", "MIT"],
-    ["Rust crates (quick-xml, zip, libxml, serde, log)", "MIT / Apache-2.0"],
+    ["CodeMirror 6 / Lezer", "MIT"],
+    ["libxml2 (statically linked)", "MIT"],
+    ["zlib (statically linked)", "Zlib"],
+    ["Rust crates (serde, quick-xml, zip, libxml, …)", "mostly MIT / Apache-2.0"],
   ];
+
+  // The full notices (~230 KB) are loaded only when asked for.
+  let notices = "";
+  let showNotices = false;
+  async function toggleNotices() {
+    showNotices = !showNotices;
+    if (showNotices && !notices) {
+      notices = (await import("../../THIRD-PARTY-NOTICES.txt?raw")).default;
+    }
+  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
@@ -77,6 +88,16 @@
             {/each}
           </tbody>
         </table>
+        <p>
+          <button class="btn btn--ghost" on:click={toggleNotices} aria-expanded={showNotices}>
+            {showNotices ? "Hide" : "Show"} all third-party licenses
+          </button>
+        </p>
+        {#if showNotices}
+          <!-- Focusable so keyboard users can scroll the long text. -->
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <pre class="notices" tabindex="0" aria-label="Third-party licenses">{notices || "Loading…"}</pre>
+        {/if}
         <p class="note">The ISO 20022 / DK / GBIC <strong>XSD schemas are not bundled</strong> and are not covered by this license. They remain the property of their respective owners (e.g. ebics.de, iso20022.org) under their own terms — all rights reserved.</p>
 
       {:else}
@@ -115,6 +136,11 @@
   .links { display: flex; gap: var(--sp-2); align-items: center; }
   .linkbtn { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }
   table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  .notices {
+    max-height: 260px; overflow: auto; margin: 0 0 var(--sp-2); padding: var(--sp-2);
+    font-family: var(--font-mono); font-size: 11px; line-height: 1.4; white-space: pre-wrap;
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  }
   td { text-align: left; padding: var(--sp-1) var(--sp-2); border-bottom: 1px solid var(--border); vertical-align: top; }
   td.key { white-space: nowrap; }
   .note { margin-top: var(--sp-3); font-size: 12px; color: var(--muted); }

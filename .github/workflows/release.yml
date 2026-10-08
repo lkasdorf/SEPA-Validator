@@ -69,7 +69,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/vcpkg-bincache
-          key: vcpkg-${{ env.VCPKG_COMMIT }}-${{ env.VCPKGRS_TRIPLET }}-libxml2
+          key: vcpkg-${{ env.VCPKG_COMMIT }}-${{ env.VCPKGRS_TRIPLET }}-libxml2-core-zlib
 
       - name: libxml2 via vcpkg (pinned)
         shell: pwsh
@@ -81,8 +81,10 @@ jobs:
           git -C $vcpkg checkout -q FETCH_HEAD
           & "$vcpkg\bootstrap-vcpkg.bat" -disableMetrics
           New-Item -ItemType Directory -Force $cache | Out-Null
-          & "$vcpkg\vcpkg.exe" install "libxml2:$env:VCPKGRS_TRIPLET" --binarysource="clear;files,$cache,readwrite"
+          # core + zlib only: the default "iconv" feature would statically link LGPL libiconv.
+          & "$vcpkg\vcpkg.exe" install "libxml2[core,zlib]:$env:VCPKGRS_TRIPLET" --binarysource="clear;files,$cache,readwrite"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (& "$vcpkg\vcpkg.exe" list | Select-String -Pattern '^libiconv') { throw "libiconv must not be linked (LGPL)" }
           "VCPKG_ROOT=$vcpkg" >> $env:GITHUB_ENV
 
       - name: libclang for bindgen
@@ -126,7 +128,7 @@ jobs:
           portable="SEPA-Validator-$VERSION-windows-x64-portable.exe"
           cp app/src-tauri/target/release/app.exe "$portable"
           if [ "$IS_TAG" = "true" ]; then
-            gh release upload "$GITHUB_REF_NAME" "$portable" --clobber
+            gh release upload "$GITHUB_REF_NAME" "$portable" app/THIRD-PARTY-NOTICES.txt --clobber
           else
             echo "PORTABLE=$portable" >> "$GITHUB_ENV"
           fi
