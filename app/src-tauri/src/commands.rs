@@ -415,6 +415,22 @@ pub fn open_schema_dir(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// True when this exe is the portable copy rather than an NSIS installation.
+/// The updater can only update an installation (it runs the NSIS installer),
+/// so the update dialog offers the new portable file instead.
+#[tauri::command]
+pub fn is_portable() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(is_portable_dir))
+        .unwrap_or(false)
+}
+
+/// The NSIS installer puts `uninstall.exe` next to the app; a portable copy has none.
+fn is_portable_dir(dir: &Path) -> bool {
+    !dir.join("uninstall.exe").is_file()
+}
+
 /// Open a URL in the default browser (Windows). Only allow-listed https links.
 #[tauri::command]
 pub fn open_url(url: String) -> Result<(), String> {
@@ -797,5 +813,17 @@ mod tests {
         let target = dir.join("out.xml");
         assert!(write_formatted_copy(&src, &target.display().to_string()).is_err());
         assert!(!target.exists());
+    }
+    #[test]
+    fn a_folder_with_the_nsis_uninstaller_is_an_installation() {
+        let dir = fresh_dir("sepa_installed_layout");
+        write_file(&dir.join("uninstall.exe"), "");
+        assert!(!is_portable_dir(&dir));
+    }
+
+    #[test]
+    fn a_folder_without_an_uninstaller_is_a_portable_copy() {
+        let dir = fresh_dir("sepa_portable_layout");
+        assert!(is_portable_dir(&dir));
     }
 }

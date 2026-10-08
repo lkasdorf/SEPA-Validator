@@ -42,7 +42,7 @@ A native Windows application that validates one or many files at once and lets y
    - `SEPA-Validator-<version>-windows-x64-setup.exe` (installer), or
    - `SEPA-Validator-<version>-windows-x64-portable.exe` (single standalone executable, no installation).
 2. Run it. It needs the Microsoft **WebView2** runtime, which is preinstalled on current Windows 10/11. The executables are not code-signed, so SmartScreen may warn: choose **More info → Run anyway**.
-3. To update, use **☰ → Check for Updates**.
+3. To update, use **☰ → Check for Updates**. The installed app updates itself. The portable version offers the new portable file to download, so it never installs a second copy.
 
 ### First run: import the XSD schemas
 

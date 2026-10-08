@@ -39,7 +39,8 @@ pub fn run() {
             commands::schema_status,
             commands::import_schemas,
             commands::open_schema_dir,
-            commands::open_url
+            commands::open_url,
+            commands::is_portable
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

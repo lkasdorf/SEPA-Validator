@@ -3,6 +3,8 @@
   import { check, type Update } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
   import { updateDialogOpen } from "./stores";
+  import { isPortable, openUrl } from "./api";
+  import { portableDownloadUrl } from "./update";
 
   type Status = "checking" | "available" | "none" | "downloading" | "error";
   let status: Status = "checking";
@@ -12,8 +14,18 @@
   let received = 0;
   let total = 0;
   let update: Update | null = null;
+  // The updater can only replace an installation; a portable copy gets a download link.
+  let portable = false;
 
-  onMount(runCheck);
+  onMount(async () => {
+    portable = await isPortable().catch(() => false);
+    await runCheck();
+  });
+
+  async function downloadPortable() {
+    await openUrl(portableDownloadUrl(version)).catch(() => {});
+    close();
+  }
 
   async function runCheck() {
     status = "checking";
@@ -80,6 +92,9 @@
         <p>No update is available right now.</p>
       {:else if status === "available"}
         <p>Version <span class="mono">{version}</span> is available.</p>
+        {#if portable}
+          <p class="muted">You are using the portable version. Download the new file and replace this one; your imported schemas are kept.</p>
+        {/if}
         {#if notes}<pre class="notes">{notes}</pre>{/if}
       {:else if status === "downloading"}
         <p>Downloading and installing…</p>
@@ -92,7 +107,10 @@
     </div>
 
     <footer>
-      {#if status === "available"}
+      {#if status === "available" && portable}
+        <button class="btn btn--primary" on:click={downloadPortable}>Download portable {version}</button>
+        <button class="btn btn--ghost close" on:click={close}>Later</button>
+      {:else if status === "available"}
         <button class="btn btn--primary" on:click={install}>Install &amp; Restart</button>
         <button class="btn btn--ghost close" on:click={close}>Later</button>
       {:else if status === "error"}

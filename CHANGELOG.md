@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The CSV export is valid RFC 4180: quotes are doubled, and all errors of a file go into one cell.
   - `--schema-dir`, `--export` and `--csv` without a value give a clear error instead of a bash crash.
   - DK/GBIC container files are recognised.
+- **The portable exe no longer installs a second copy when updating.** It used to run the NSIS installer like the installed app. It now detects that it is portable (no uninstaller next to it) and offers the new portable file to download instead.
 - `validate_all.sh` and the rename scripts stop with a clear message when `rg` (ripgrep) is missing. Before, they silently reported every file as NO_SCHEMA or dated it 00000000.
 - **Starting a new validation while one is running no longer mixes results.** Each run has an id, late events from an older run are ignored, and the backend stops the older run.
 - **The XML viewer and Overview/Remittance tabs no longer show the previous file.** Before, a slower load could overwrite a newer selection. The viewer is dimmed while a file loads, and clicking an error doesn't jump while the text still belongs to another file.
