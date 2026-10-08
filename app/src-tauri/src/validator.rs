@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use libxml::parser::Parser;
 use libxml::schemas::{SchemaParserContext, SchemaValidationContext};
+use libxml::tree::Document;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::name::ResolveResult;
 use quick_xml::reader::{NsReader, Reader};
@@ -230,9 +230,9 @@ impl Validator {
                     schema_name.to_string(),
                     vec![Message {
                         severity: Severity::Error,
-                        text: format!("XML parse error: {e}"),
-                        line: None,
-                        column: None,
+                        text: e.message,
+                        line: e.line,
+                        column: e.column,
                     }],
                     Status::Error,
                     1,
@@ -240,18 +240,13 @@ impl Validator {
                 )
             }
         };
-        let doc = match Parser::default().parse_string(&formatted) {
+        let doc = match parse_strict(&formatted) {
             Ok(d) => d,
-            Err(e) => {
+            Err(m) => {
                 return mk(
                     ns.clone(),
                     schema_name.to_string(),
-                    vec![Message {
-                        severity: Severity::Error,
-                        text: format!("XML parse error: {e:?}"),
-                        line: None,
-                        column: None,
-                    }],
+                    vec![m],
                     Status::Error,
                     1,
                     0,
@@ -259,10 +254,19 @@ impl Validator {
             }
         };
 
-        let messages = match validator.validate_document(&doc) {
-            Ok(()) => Vec::new(),
-            Err(errors) => errors.iter().map(to_message).collect(),
-        };
+        // Call libxml directly: the crate's `validate_document` panics on rc == -1
+        // (e.g. entity nodes) and only drains the error log on failure.
+        let rc =
+            unsafe { libxml::bindings::xmlSchemaValidateDoc(validator.as_ptr(), doc.doc_ptr()) };
+        let mut messages: Vec<Message> = validator.drain_errors().iter().map(to_message).collect();
+        if rc != 0 && !messages.iter().any(|m| m.severity == Severity::Error) {
+            messages.push(Message {
+                severity: Severity::Error,
+                text: format!("Schema validation failed (libxml2 code {rc})."),
+                line: None,
+                column: None,
+            });
+        }
 
         ValidationResult::from_messages(file, path_str, ns, schema_name.to_string(), messages)
     }
@@ -273,6 +277,53 @@ impl Validator {
         let mut parser = SchemaParserContext::from_file(path_str);
         SchemaValidationContext::from_parser(&mut parser)
             .map_err(|errs| format!("Failed to load schema: {} error(s)", errs.len()))
+    }
+}
+
+/// Strict parse of the formatted text: no error recovery (a repaired tree would
+/// hide well-formedness errors), no network, and line numbers beyond 65535.
+fn parse_strict(text: &str) -> Result<Document, Message> {
+    use libxml::bindings as b;
+    let fail = |text: String| Message {
+        severity: Severity::Error,
+        text,
+        line: None,
+        column: None,
+    };
+    let len = i32::try_from(text.len())
+        .map_err(|_| fail("File too large to validate (over 2 GB).".into()))?;
+    let options = b::xmlParserOption_XML_PARSE_NONET
+        | b::xmlParserOption_XML_PARSE_BIG_LINES
+        | b::xmlParserOption_XML_PARSE_NOERROR
+        | b::xmlParserOption_XML_PARSE_NOWARNING;
+    unsafe {
+        let ctxt = b::xmlNewParserCtxt();
+        if ctxt.is_null() {
+            return Err(fail("Could not create the XML parser.".into()));
+        }
+        let doc = b::xmlCtxtReadMemory(
+            ctxt,
+            text.as_ptr().cast(),
+            len,
+            std::ptr::null(),
+            c"UTF-8".as_ptr(),
+            options,
+        );
+        let result = if doc.is_null() {
+            let err = b::xmlCtxtGetLastError(ctxt.cast());
+            Err(if err.is_null() {
+                fail("XML not well-formed.".into())
+            } else {
+                let mut m = to_message(&libxml::error::StructuredError::from_raw(err));
+                m.severity = Severity::Error;
+                m.text = format!("XML not well-formed: {}", m.text);
+                m
+            })
+        } else {
+            Ok(Document::new_ptr(doc))
+        };
+        b::xmlFreeParserCtxt(ctxt);
+        result
     }
 }
 
@@ -298,6 +349,9 @@ fn to_message(e: &libxml::error::StructuredError) -> Message {
         column,
     }
 }
+
+#[cfg(test)]
+mod strict_tests;
 
 #[cfg(test)]
 mod tests {
