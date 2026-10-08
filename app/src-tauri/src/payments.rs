@@ -20,7 +20,10 @@ pub struct Creditor {
 
 impl Creditor {
     fn has_any(&self) -> bool {
-        self.name.is_some() || self.iban.is_some() || self.bic.is_some() || self.creditor_id.is_some()
+        self.name.is_some()
+            || self.iban.is_some()
+            || self.bic.is_some()
+            || self.creditor_id.is_some()
     }
 }
 
@@ -89,7 +92,10 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
 
     loop {
         buf.clear();
-        match reader.read_event_into(&mut buf).map_err(|e| e.to_string())? {
+        match reader
+            .read_event_into(&mut buf)
+            .map_err(|e| e.to_string())?
+        {
             Event::Start(e) => {
                 let name = local_of(e.name().as_ref());
                 match name.as_str() {
