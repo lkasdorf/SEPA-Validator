@@ -31,6 +31,7 @@ pub fn run() {
             commands::start_validation,
             commands::cancel_validation,
             commands::write_text_file,
+            commands::save_formatted,
             commands::read_formatted,
             commands::read_payment_summary,
             commands::schema_status,

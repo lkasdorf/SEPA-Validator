@@ -9,6 +9,7 @@
   import SchemaDialog from "./lib/SchemaDialog.svelte";
   import AboutDialog from "./lib/AboutDialog.svelte";
   import UpdateDialog from "./lib/UpdateDialog.svelte";
+  import SaveFormatted from "./lib/SaveFormatted.svelte";
   import { selectedResult, runId, openViewerSearch, foldAllInViewer, unfoldAllInViewer, schemaDialogOpen, viewerLarge, aboutDialogOpen, updateDialogOpen } from "./lib/stores";
   import { loadPaymentSummary } from "./lib/paymentSummary";
 
@@ -59,6 +60,7 @@
         </div>
         {#if viewerTab === "xml"}
           <button class="btn btn--ghost" on:click={() => $openViewerSearch()} disabled={!$selectedResult}>Search</button>
+          <SaveFormatted />
           {#if !$viewerLarge}
             <button class="btn btn--ghost" on:click={() => $foldAllInViewer()} disabled={!$selectedResult}>Collapse all</button>
             <button class="btn btn--ghost" on:click={() => $unfoldAllInViewer()} disabled={!$selectedResult}>Expand all</button>

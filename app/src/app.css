@@ -29,7 +29,7 @@ body { font: 14px var(--font-ui); background: var(--bg); color: var(--fg); }
 .body { display: grid; min-height: 0; }
 .files, .viewer, .log { min-height: 0; overflow: hidden; background: var(--panel); }
 .viewer { display: flex; flex-direction: column; }
-.viewer-bar { display: flex; gap: var(--sp-2); align-items: center; padding: var(--sp-2); border-bottom: 1px solid var(--border); background: var(--chrome); flex: 0 0 auto; }
+.viewer-bar { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; padding: var(--sp-2); border-bottom: 1px solid var(--border); background: var(--chrome); flex: 0 0 auto; }
 .viewer-bar .viewer-note { font-size: 11px; color: var(--muted); align-self: center; }
 .viewer-tabs { margin-right: var(--sp-1); }
 .summary { flex: 1 1 auto; min-height: 0; overflow: auto; }
@@ -40,7 +40,7 @@ body { font: 14px var(--font-ui); background: var(--bg); color: var(--fg); }
 
 /* --- Buttons: one shared system --- */
 .btn {
-  font: inherit; font-size: 12px; line-height: 1.4;
+  font: inherit; font-size: 12px; line-height: 1.4; white-space: nowrap;
   padding: var(--sp-1) var(--sp-3);
   border: 1px solid transparent; border-radius: var(--radius);
   background: transparent; color: var(--fg); cursor: pointer;

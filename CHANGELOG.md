@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Save formatted…** in the XML tab saves the indented XML shown in the viewer as a new file, next to the original as `<name>_formatted.xml` by default. Only whitespace between tags changes; all values stay byte-identical, and the original file is never overwritten.
 - **Cancel** button while a validation runs. The UI stops at once, and the backend stops after the file it is currently validating.
 
 ### Fixed
