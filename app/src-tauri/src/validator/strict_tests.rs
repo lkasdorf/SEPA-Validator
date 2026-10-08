@@ -192,3 +192,14 @@ fn schema_errors_are_readable_and_carry_a_hint() {
         Some("The value has leading or trailing spaces; remove them.")
     );
 }
+
+#[test]
+fn plausibility_warnings_are_added_to_a_schema_valid_file() {
+    let r = validate(
+        "plausibility",
+        &doc(&tx("Muster GmbH", "DE89370400440532013001", "COBADEFFXXX")),
+    );
+    assert_eq!(r.status, Status::Warnings, "messages: {:?}", r.messages);
+    assert!(r.messages[0].text.contains("IBAN check digits"));
+    assert!(r.messages[0].line.is_some());
+}
