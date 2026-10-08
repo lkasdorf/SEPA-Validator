@@ -47,6 +47,11 @@ export function openSchemaDir(): Promise<void> {
   return invoke("open_schema_dir");
 }
 
+/** True for the portable exe (no NSIS installation next to it). */
+export function isPortable(): Promise<boolean> {
+  return invoke<boolean>("is_portable");
+}
+
 export function openUrl(url: string): Promise<void> {
   return invoke("open_url", { url });
 }
