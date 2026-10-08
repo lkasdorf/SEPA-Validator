@@ -2,9 +2,9 @@
   import { onMount } from "svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
-  import { startValidation, schemaStatus } from "./api";
-  import { results, selectedIndex, progress, theme, schemaDialogOpen } from "./stores";
-  import type { ValidationEvent } from "./types";
+  import { schemaStatus } from "./api";
+  import { results, progress, theme, schemaDialogOpen } from "./stores";
+  import { runValidation as run, cancelValidation } from "./validation";
   import { exportTxt, exportCsv } from "./export";
   import { get } from "svelte/store";
   import Menu from "./Menu.svelte";
@@ -24,24 +24,6 @@
     }
   }
   $: if (!$schemaDialogOpen) refreshSchemaBadge();
-
-  async function run(paths: string[]) {
-    if (paths.length === 0) return;
-    results.set([]);
-    selectedIndex.set(-1);
-    progress.set({ done: 0, total: 0, running: true });
-    await startValidation(paths, (ev: ValidationEvent) => {
-      if (ev.event === "started") {
-        progress.set({ done: 0, total: ev.data.total, running: true });
-      } else if (ev.event === "result") {
-        results.update((r) => { r.push(ev.data.result); return r; });
-        progress.update((p) => ({ ...p, done: p.done + 1 }));
-        if (ev.data.index === 0) selectedIndex.set(0);
-      } else if (ev.event === "finished") {
-        progress.update((p) => ({ ...p, running: false }));
-      }
-    });
-  }
 
   async function pickFiles() {
     const sel = await open({ multiple: true, filters: [{ name: "XML", extensions: ["xml"] }] });
@@ -70,7 +52,11 @@
   <button class="btn btn--ghost" on:click={doExportTxt} disabled={$results.length === 0}>Export TXT</button>
   <button class="btn btn--ghost" on:click={doExportCsv} disabled={$results.length === 0}>Export CSV</button>
   <button class="btn btn--ghost" on:click={() => schemaDialogOpen.set(true)}>Schemas… {schemaTotal ? `(${schemaPresent}/${schemaTotal})` : ""}</button>
-  <span class="hint">or drag &amp; drop files here</span>
+  {#if $progress.running}
+    <button class="btn btn--ghost" on:click={cancelValidation}>Cancel</button>
+  {:else}
+    <span class="hint">or drag &amp; drop files here</span>
+  {/if}
   <div class="right">
     <Menu />
     <button class="btn btn--ghost" on:click={toggleTheme} title="Toggle theme" aria-label="Toggle theme">◐</button>

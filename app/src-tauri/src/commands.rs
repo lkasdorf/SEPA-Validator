@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use serde::Serialize;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
 
 use crate::model::{Message, Severity, Status, ValidationResult};
 use crate::scanner;
@@ -20,7 +22,29 @@ pub enum ValidationEvent {
     },
     Finished {
         total: usize,
+        /// True if the run stopped early (cancelled or superseded by a newer run).
+        cancelled: bool,
     },
+}
+
+/// Generation counter for validation runs. Starting a run or cancelling bumps
+/// it, so a worker whose id is no longer current stops before its next file.
+#[derive(Default, Clone)]
+pub struct RunState(Arc<AtomicU64>);
+
+impl RunState {
+    /// Start a new run (implicitly cancelling any running one); returns its id.
+    pub fn begin(&self) -> u64 {
+        self.0.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    pub fn cancel(&self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn is_cancelled(&self, id: u64) -> bool {
+        self.0.load(Ordering::SeqCst) != id
+    }
 }
 
 /// The per-user directory that holds imported XSD schema files (created if missing).
@@ -35,41 +59,71 @@ pub fn schema_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 }
 
 /// Expand inputs, then validate each file on a worker thread, streaming
-/// results to the frontend in order via the channel.
+/// results to the frontend in order via the channel. Starting a run cancels
+/// the previous one.
 #[tauri::command]
-pub fn start_validation(app: AppHandle, paths: Vec<String>, on_event: Channel<ValidationEvent>) {
-    let files: Vec<PathBuf> = scanner::expand_paths(paths.iter().map(PathBuf::from));
+pub fn start_validation(
+    app: AppHandle,
+    runs: State<'_, RunState>,
+    paths: Vec<String>,
+    on_event: Channel<ValidationEvent>,
+) {
+    let runs = runs.inner().clone();
+    let id = runs.begin();
     let dir = schema_dir(&app).unwrap_or_default();
 
     // libxml types are not Send: build the Validator inside the thread.
+    // The folder walk runs there too, so dropping a big folder can't block the UI thread.
     std::thread::spawn(move || {
+        let files: Vec<PathBuf> = scanner::expand_paths(paths.iter().map(PathBuf::from));
         let mut validator = Validator::new(dir);
         run_batch(
             &files,
             |f| validator.validate_file(f),
-            |ev| {
-                let _ = on_event.send(ev);
-            },
+            || runs.is_cancelled(id),
+            |ev| on_event.send(ev).is_ok(),
         );
     });
+}
+
+/// Stop the running validation after the file it is currently validating.
+#[tauri::command]
+pub fn cancel_validation(runs: State<'_, RunState>) {
+    runs.cancel();
 }
 
 /// Validate `files` in order, emitting Started, one Result per file, then Finished.
 /// A panic while validating one file becomes an Error result for that file, so
 /// the run always continues and always finishes (the UI waits for Finished).
+/// Stops early when `is_cancelled` turns true or `send` reports the frontend gone.
 fn run_batch(
     files: &[PathBuf],
     mut validate: impl FnMut(&Path) -> ValidationResult,
-    mut send: impl FnMut(ValidationEvent),
+    is_cancelled: impl Fn() -> bool,
+    mut send: impl FnMut(ValidationEvent) -> bool,
 ) {
     let total = files.len();
-    send(ValidationEvent::Started { total });
+    if !send(ValidationEvent::Started { total }) {
+        return;
+    }
     for (index, file) in files.iter().enumerate() {
+        if is_cancelled() {
+            send(ValidationEvent::Finished {
+                total,
+                cancelled: true,
+            });
+            return;
+        }
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| validate(file)))
             .unwrap_or_else(|payload| crashed_result(file, payload.as_ref()));
-        send(ValidationEvent::Result { index, result });
+        if !send(ValidationEvent::Result { index, result }) {
+            return;
+        }
     }
-    send(ValidationEvent::Finished { total });
+    send(ValidationEvent::Finished {
+        total,
+        cancelled: false,
+    });
 }
 
 fn crashed_result(file: &Path, payload: &(dyn std::any::Any + Send)) -> ValidationResult {
@@ -322,7 +376,11 @@ mod tests {
                 }
                 ok_result(p)
             },
-            |ev| events.push(ev),
+            || false,
+            |ev| {
+                events.push(ev);
+                true
+            },
         );
 
         let results: Vec<&ValidationResult> = events
@@ -337,8 +395,76 @@ mod tests {
         assert_eq!(results[2].status, crate::model::Status::Ok);
         assert!(matches!(
             events.last(),
-            Some(ValidationEvent::Finished { total: 3 })
+            Some(ValidationEvent::Finished {
+                total: 3,
+                cancelled: false
+            })
         ));
+    }
+
+    fn paths(names: &[&str]) -> Vec<PathBuf> {
+        names.iter().map(PathBuf::from).collect()
+    }
+
+    #[test]
+    fn a_cancelled_run_stops_before_the_next_file_and_says_so() {
+        let files = paths(&["a.xml", "b.xml", "c.xml"]);
+        let validated = std::cell::Cell::new(0);
+        let mut events = Vec::new();
+        run_batch(
+            &files,
+            |p| {
+                validated.set(validated.get() + 1);
+                ok_result(p)
+            },
+            || validated.get() >= 1,
+            |ev| {
+                events.push(ev);
+                true
+            },
+        );
+        assert_eq!(validated.get(), 1);
+        assert!(matches!(
+            events.last(),
+            Some(ValidationEvent::Finished {
+                total: 3,
+                cancelled: true
+            })
+        ));
+    }
+
+    #[test]
+    fn a_run_stops_when_its_events_can_no_longer_be_delivered() {
+        let files = paths(&["a.xml", "b.xml"]);
+        let validated = std::cell::Cell::new(0);
+        run_batch(
+            &files,
+            |p| {
+                validated.set(validated.get() + 1);
+                ok_result(p)
+            },
+            || false,
+            |_| false,
+        );
+        assert_eq!(validated.get(), 0);
+    }
+
+    #[test]
+    fn starting_a_new_run_cancels_the_previous_one() {
+        let runs = RunState::default();
+        let a = runs.begin();
+        assert!(!runs.is_cancelled(a));
+        let b = runs.begin();
+        assert!(runs.is_cancelled(a));
+        assert!(!runs.is_cancelled(b));
+    }
+
+    #[test]
+    fn cancel_stops_the_current_run() {
+        let runs = RunState::default();
+        let a = runs.begin();
+        runs.cancel();
+        assert!(runs.is_cancelled(a));
     }
 
     fn fresh_dir(name: &str) -> PathBuf {

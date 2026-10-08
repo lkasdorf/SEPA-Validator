@@ -6,12 +6,18 @@
   import { oneDark } from "@codemirror/theme-one-dark";
   import { search, searchKeymap, highlightSelectionMatches, openSearchPanel } from "@codemirror/search";
   import { codeFolding, foldGutter, foldKeymap, foldAll, unfoldAll } from "@codemirror/language";
-  import { selectedResult, jumpToLine, openViewerSearch, foldAllInViewer, unfoldAllInViewer, viewerLarge } from "./stores";
+  import { selectedResult, runId, jumpToLine, openViewerSearch, foldAllInViewer, unfoldAllInViewer, viewerLarge } from "./stores";
   import { readFormatted } from "./api";
+  import { createLatest } from "./latest";
+  import { errorLinesOf } from "./viewer";
 
   let host: HTMLDivElement;
   let view: EditorView | null = null;
-  let currentPath = "";
+  // A file is identified per validation run: re-validating the same path reloads it.
+  let requestedKey = ""; // file the viewer should show
+  let shownKey = ""; // file whose text is in the editor right now
+  let decoratedFor = ""; // key + error lines last decorated (avoid redundant re-dispatches)
+  const latest = createLatest();
 
   const HEAVY_LIMIT = 10 * 1024 * 1024;
   const heavyComp = new Compartment();
@@ -94,27 +100,48 @@
     return () => view?.destroy();
   });
 
-  // Load file content when selection changes.
-  $: void loadFor($selectedResult?.path, $selectedResult?.messages.map((m) => m.line ?? 0).filter((l) => l > 0));
+  // Load file content when the selection (or the validation run) changes.
+  $: void loadFor($selectedResult?.path, $runId, errorLinesOf($selectedResult?.messages ?? []));
 
-  async function loadFor(path: string | undefined, errorLines: number[] | undefined) {
-    if (!view || !path) return;
-    if (path !== currentPath) {
-      currentPath = path;
+  function show(text: string, key: string) {
+    if (!view) return;
+    const large = text.length > HEAVY_LIMIT;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: text },
+      effects: heavyComp.reconfigure(large ? [] : HEAVY),
+    });
+    viewerLarge.set(large);
+    shownKey = key;
+    decoratedFor = "";
+  }
+
+  async function loadFor(path: string | undefined, run: number, errorLines: number[]) {
+    if (!view) return;
+    if (!path) {
+      latest.begin(); // drop any load still in flight
+      requestedKey = "";
+      if (shownKey !== "") show("", "");
+      return;
+    }
+    const key = `${run}|${path}`;
+    if (key !== requestedKey) {
+      requestedKey = key;
+      const token = latest.begin();
       let text = "";
       try { text = await readFormatted(path); } catch { text = "(could not read file)"; }
-      const large = text.length > HEAVY_LIMIT;
-      view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: text },
-        effects: heavyComp.reconfigure(large ? [] : HEAVY),
-      });
-      viewerLarge.set(large);
+      if (!latest.isCurrent(token)) return; // a newer selection won; don't overwrite it
+      show(text, key);
     }
-    view.dispatch({ effects: [setErrorLines.of(errorLines ?? []), setActiveLine.of(null)] });
+    const deco = `${key}|${errorLines.join(",")}`;
+    if (shownKey === key && decoratedFor !== deco) {
+      decoratedFor = deco;
+      view.dispatch({ effects: [setErrorLines.of(errorLines), setActiveLine.of(null)] });
+    }
   }
 
   /** Scroll to and flash a 1-based line (called from LogPanel via the jumpToLine store). */
   function jumpTo(line: number) {
+    if (shownKey !== requestedKey) return; // still loading: the text belongs to another file
     if (!view || line < 1 || line > view.state.doc.lines) return;
     const pos = view.state.doc.line(line).from;
     view.dispatch({
@@ -123,9 +150,10 @@
   }
 </script>
 
-<div class="codehost" bind:this={host}></div>
+<div class="codehost" class:loading={shownKey !== requestedKey} bind:this={host}></div>
 
 <style>
-  .codehost { flex: 1 1 auto; min-height: 0; }
+  .codehost { flex: 1 1 auto; min-height: 0; transition: opacity .12s ease; }
+  .codehost.loading { opacity: .45; cursor: progress; }
   :global(.codehost .cm-editor) { height: 100%; }
 </style>

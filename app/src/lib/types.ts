@@ -22,7 +22,7 @@ export interface ValidationResult {
 export type ValidationEvent =
   | { event: "started"; data: { total: number } }
   | { event: "result"; data: { index: number; result: ValidationResult } }
-  | { event: "finished"; data: { total: number } };
+  | { event: "finished"; data: { total: number; cancelled: boolean } };
 
 /** Human label like the old tool: "INVALID (2 errors, 1 warning)". */
 export function statusLabel(r: ValidationResult): string {

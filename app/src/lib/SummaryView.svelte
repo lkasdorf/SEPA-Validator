@@ -7,6 +7,8 @@
 <div class="summary">
   {#if !$selectedResult}
     <p class="muted">No file selected.</p>
+  {:else if ps.path !== $selectedResult.path}
+    <p class="muted">Loading…</p>
   {:else if ps.state === "error"}
     <p class="muted">Could not read file as XML.</p>
   {:else if ps.state === "ready" && ps.data}

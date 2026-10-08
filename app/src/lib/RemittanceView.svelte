@@ -5,6 +5,7 @@
   $: ps = $paymentSummary;
 
   async function doExport() {
+    if (ps.path !== $selectedResult?.path) return; // still showing another file's data
     const tx = ps.data?.transactions ?? [];
     if (!tx.length) return;
     try {
@@ -18,6 +19,8 @@
 <div class="summary">
   {#if !$selectedResult}
     <p class="muted">No file selected.</p>
+  {:else if ps.path !== $selectedResult.path}
+    <p class="muted">Loading…</p>
   {:else if ps.state === "error"}
     <p class="muted">Could not read file as XML.</p>
   {:else if ps.state === "ready" && ps.data}
