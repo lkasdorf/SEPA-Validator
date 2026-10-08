@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Third-party licenses.** About → Licenses can show the full license texts of every bundled component (Rust crates, the npm packages in the frontend, libxml2 and zlib). The same `THIRD-PARTY-NOTICES.txt` is attached to each release.
 
 ### Changed
+- The legacy PowerShell/WinForms tool (`windows/`) was removed from master. It remains available at tag `v1.0.0`.
 - libxml2 is now built without iconv support, so the app no longer links LGPL-licensed libiconv. SEPA files are UTF-8, so validation is unaffected.
 
 ### Fixed
@@ -29,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A single bad file no longer stops the run.** DOCTYPE declarations are rejected, undefined entities are reported, and an internal error marks just that file as an error. The run always finishes; before, the UI could hang at "Validating…".
 - Error line numbers above 65,535 are reported correctly (they were capped at 65535).
 - Parse errors now show their line and column.
+- **CLI (`scripts/validate.sh`):**
+  - The TXT export lists every error of a file, not just the first.
+  - The CSV export is valid RFC 4180: quotes are doubled, and all errors of a file go into one cell.
+  - `--schema-dir`, `--export` and `--csv` without a value give a clear error instead of a bash crash.
+  - DK/GBIC container files are recognised.
+- `validate_all.sh` and the rename scripts stop with a clear message when `rg` (ripgrep) is missing. Before, they silently reported every file as NO_SCHEMA or dated it 00000000.
 - **Starting a new validation while one is running no longer mixes results.** Each run has an id, late events from an older run are ignored, and the backend stops the older run.
 - **The XML viewer and Overview/Remittance tabs no longer show the previous file.** Before, a slower load could overwrite a newer selection. The viewer is dimmed while a file loads, and clicking an error doesn't jump while the text still belongs to another file.
 - **Re-validating the same file reloads its content.** Before, the viewer and Overview kept showing the old text and summary.
@@ -42,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Content Security Policy enabled.** Scripts load only from the app itself, so injected inline scripts and event handlers are blocked.
 - **Links are allow-listed.** The app opens only `https://` links to github.com, ebics.de and six-group.com. Local paths, network shares, `file:` and other protocol handlers are refused.
 - **Exports are path-checked.** The app writes only `.txt`/`.csv` files into an existing folder on a local drive. The unused raw file-read command was removed.
+- The CLI scripts call `xmllint --nonet`, so validation never fetches anything from the network.
 - **ZIP schema import hardened.** Entries with names Windows would resolve outside the schema folder (such as `C:evil.xsd`) are skipped, schema files are capped at 10 MB, and a failed or oversized import leaves no partial file behind.
 
 ## [2.2.0] - 2026-09-19

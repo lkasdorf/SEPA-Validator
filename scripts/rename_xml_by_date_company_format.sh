@@ -7,12 +7,19 @@ TARGET_DIR="${1:-to_check}"
 OUT_DIR="${2:-analysis}"
 
 cd "${ROOT_DIR}"
-mkdir -p "${OUT_DIR}"
 
 if ! command -v xmllint >/dev/null 2>&1; then
   echo "xmllint not found in PATH." >&2
   exit 1
 fi
+
+# Without ripgrep every namespace/date lookup would silently come back empty.
+if ! command -v rg >/dev/null 2>&1; then
+  echo "ripgrep (rg) not found in PATH. Install it (e.g. apt install ripgrep / brew install ripgrep)." >&2
+  exit 1
+fi
+
+mkdir -p "${OUT_DIR}"
 
 timestamp="$(date +%Y%m%d_%H%M%S)"
 map_csv="${OUT_DIR}/rename_xml_company_${timestamp}.csv"
@@ -23,7 +30,7 @@ printf 'old_path,new_path,date,company,format,status\n' > "${map_csv}"
 extract_first_text() {
   local file="$1"
   local xpath="$2"
-  xmllint --xpath "string(${xpath})" "${file}" 2>/dev/null || true
+  xmllint --nonet --xpath "string(${xpath})" "${file}" 2>/dev/null || true
 }
 
 normalize_company() {

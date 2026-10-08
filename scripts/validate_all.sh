@@ -13,6 +13,12 @@ if ! command -v xmllint >/dev/null 2>&1; then
   exit 1
 fi
 
+# Without ripgrep every namespace/date lookup would silently come back empty.
+if ! command -v rg >/dev/null 2>&1; then
+  echo "ripgrep (rg) not found in PATH. Install it (e.g. apt install ripgrep / brew install ripgrep)." >&2
+  exit 1
+fi
+
 mkdir -p "${OUT_DIR}"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 CSV_PATH="${OUT_DIR}/validation_${TIMESTAMP}.csv"
@@ -43,7 +49,7 @@ while IFS= read -r -d '' file; do
     continue
   fi
 
-  if out="$(xmllint --noout --schema "${schema}" "${file}" 2>&1)"; then
+  if out="$(xmllint --nonet --noout --schema "${schema}" "${file}" 2>&1)"; then
     ok=$((ok + 1))
     printf '"%s","%s","%s","OK",""\n' "${file}" "${ns}" "${schema}" >> "${CSV_PATH}"
   else
