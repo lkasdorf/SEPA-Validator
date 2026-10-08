@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-09
+
 ### Added
 - **Plausibility checks** beyond the XSD, shown as warnings with a line to jump to and a hint:
   - `NbOfTxs` and `CtrlSum`, in `GrpHdr` and in every `PmtInf`, are checked against the actual transactions (amounts compared exactly as decimals).
@@ -112,7 +114,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release: native Windows GUI SEPA XML Validator (PowerShell/WinForms) with full XSD validation, drag & drop, file/folder selection, batch validation, and TXT export.
 - Bash CLI scripts for validation, batch validation, and renaming XML files by date/company/schema.
 
-[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v1.0.0...v2.0.0
