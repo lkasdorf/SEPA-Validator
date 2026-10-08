@@ -61,6 +61,7 @@ resolve_schema() {
         *pain.008.001.02) xsd="pain.008.001.02.xsd" ;;
         *pain.008.001.08) xsd="pain.008.001.08.xsd" ;;
         *camt.054.001.08)  xsd="camt.054.001.08.xsd" ;;
+        *container.nnn.001.GBIC4) xsd="container.nnn.001.GBIC4.xsd" ;;
     esac
     if [[ -n "${xsd}" && -f "${SCHEMA_DIR}/${xsd}" ]]; then
         echo "${SCHEMA_DIR}/${xsd}"
@@ -69,13 +70,7 @@ resolve_schema() {
 
 # --- Extract namespace ---
 get_namespace() {
-    local file="$1"
-    # Try xmllint first, fall back to grep
-    if command -v xmllint >/dev/null 2>&1; then
-        xmllint --xpath 'namespace-uri(/*)' "$file" 2>/dev/null || true
-    else
-        grep -oP 'xmlns="[^"]+"' "$file" | head -1 | grep -oP '(?<=xmlns=")[^"]+' || true
-    fi
+    xmllint --nonet --xpath 'namespace-uri(/*)' "$1" 2>/dev/null || true
 }
 
 # --- Validate single file ---
@@ -116,7 +111,7 @@ validate_file() {
     schema_name="$(basename "$schema")"
 
     local output
-    if output="$(xmllint --noout --schema "$schema" "$file" 2>&1)"; then
+    if output="$(xmllint --nonet --noout --schema "$schema" "$file" 2>&1)"; then
         ok=$((ok + 1))
         if [[ "$quiet" -eq 0 ]]; then
             printf "${GREEN}${BOLD}OK${RESET}       %s\n" "$file"
@@ -128,44 +123,43 @@ validate_file() {
         printf "         Namespace: %s\n" "$ns"
         printf "         Schema: %s\n" "$schema_name"
 
-        # Print each error line
-        local err_num=0
+        # Every error line, without xmllint's closing "file.xml fails to validate"
+        local errors_only="" err_num=0
         while IFS= read -r line; do
-            # Skip the final "file.xml fails to validate" line
-            [[ "$line" == *"fails to validate"* ]] && continue
-            [[ -z "$line" ]] && continue
+            [[ "$line" == *"fails to validate"* || -z "$line" ]] && continue
             err_num=$((err_num + 1))
             printf "         ${RED}[%d]${RESET} %s\n" "$err_num" "$line"
+            errors_only+="${line}"$'\n'
         done <<< "$output"
         printf "\n"
-        append_result "$file" "$ns" "$schema_name" "FAIL" "$output"
+        append_result "$file" "$ns" "$schema_name" "FAIL" "${errors_only%$'\n'}"
     fi
 }
 
 # --- Result collection for export ---
-declare -a RESULTS=()
+# One array per column: file names and multi-line error lists may contain any
+# character, so nothing is packed into delimited strings.
+declare -a R_FILE=() R_NS=() R_SCHEMA=() R_STATUS=() R_DETAIL=()
 
 append_result() {
-    local file="$1" ns="$2" schema="$3" status="$4" detail="$5"
-    RESULTS+=("${file}|${ns}|${schema}|${status}|${detail}")
+    R_FILE+=("$1"); R_NS+=("$2"); R_SCHEMA+=("$3"); R_STATUS+=("$4"); R_DETAIL+=("$5")
 }
 
 export_txt() {
-    local out_file="$1"
+    local out_file="$1" i
     {
         printf "SEPA XML Validation - %s\n" "$(date '+%Y-%m-%d %H:%M:%S')"
         printf "%d files checked | OK: %d | Invalid: %d | No Schema: %d\n" "$total" "$ok" "$fail" "$no_schema"
         printf '%.0s=' {1..80}
         printf '\n'
 
-        for entry in "${RESULTS[@]}"; do
-            IFS='|' read -r file ns schema status detail <<< "$entry"
-            printf "\nFile: %s\n" "$file"
-            printf "Namespace: %s\n" "$ns"
-            printf "Schema: %s\n" "$schema"
-            printf "Status: %s\n" "$status"
-            if [[ -n "$detail" ]]; then
-                printf "\n%s\n" "$detail"
+        for i in "${!R_FILE[@]}"; do
+            printf "\nFile: %s\n" "${R_FILE[i]}"
+            printf "Namespace: %s\n" "${R_NS[i]}"
+            printf "Schema: %s\n" "${R_SCHEMA[i]}"
+            printf "Status: %s\n" "${R_STATUS[i]}"
+            if [[ -n "${R_DETAIL[i]}" ]]; then
+                printf "\n%s\n" "${R_DETAIL[i]}"
             fi
             printf '%.0s-' {1..80}
             printf '\n'
@@ -174,17 +168,22 @@ export_txt() {
     echo "Report saved to: ${out_file}"
 }
 
+# RFC 4180 field: quotes doubled, the whole field quoted.
+csv_field() {
+    local s="${1//\"/\"\"}"
+    printf '"%s"' "$s"
+}
+
 export_csv() {
-    local out_file="$1"
+    local out_file="$1" i detail
     {
         printf 'file,namespace,schema,status,error\n'
-        for entry in "${RESULTS[@]}"; do
-            IFS='|' read -r file ns schema status detail <<< "$entry"
-            # Escape quotes in detail
-            detail="${detail//\"/\'}"
-            # First line only for CSV
-            detail="$(echo "$detail" | head -1)"
-            printf '"%s","%s","%s","%s","%s"\n' "$file" "$ns" "$schema" "$status" "$detail"
+        for i in "${!R_FILE[@]}"; do
+            # All errors of a file in one cell, separated by " | ".
+            detail="${R_DETAIL[i]//$'\n'/ | }"
+            printf '%s,%s,%s,%s,%s\n' \
+                "$(csv_field "${R_FILE[i]}")" "$(csv_field "${R_NS[i]}")" "$(csv_field "${R_SCHEMA[i]}")" \
+                "$(csv_field "${R_STATUS[i]}")" "$(csv_field "$detail")"
         done
     } > "$out_file"
     echo "CSV saved to: ${out_file}"
@@ -196,11 +195,18 @@ export_file=""
 csv_file=""
 quiet=0
 
+needs_value() {
+    if [[ $# -lt 2 || -z "$2" ]]; then
+        echo "Error: $1 needs a value. Run with --help for usage information." >&2
+        exit 1
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --schema-dir) SCHEMA_DIR="$2"; shift 2 ;;
-        --export)     export_file="$2"; shift 2 ;;
-        --csv)        csv_file="$2"; shift 2 ;;
+        --schema-dir) needs_value "$@"; SCHEMA_DIR="$2"; shift 2 ;;
+        --export)     needs_value "$@"; export_file="$2"; shift 2 ;;
+        --csv)        needs_value "$@"; csv_file="$2"; shift 2 ;;
         -q|--quiet)   quiet=1; shift ;;
         -h|--help)    usage ;;
         *)            files+=("$1"); shift ;;

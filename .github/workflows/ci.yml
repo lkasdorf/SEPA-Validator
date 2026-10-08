@@ -26,6 +26,11 @@ jobs:
         run: bash scripts/pii-guard.sh "$BASE"
       - name: Script tests (release, notices)
         run: node --test scripts/*.test.mjs
+      - name: CLI script tests (validate.sh & co.)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libxml2-utils ripgrep >/dev/null
+          bash scripts/validate.test.sh
 
   app:
     name: Build & test (Windows)

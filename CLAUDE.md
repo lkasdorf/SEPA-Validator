@@ -4,24 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SEPA XML Validator — validates SEPA payment XML files against ISO 20022 XSD schemas. Also serves as a local data curation workspace for triaging XML payment files.
+SEPA XML Validator: validates SEPA payment XML files against ISO 20022 XSD schemas, plus plausibility checks the schema can't express. Also serves as a local data curation workspace for triaging XML payment files.
 
-There are two GUIs: the original **PowerShell/WinForms** tool (`windows/`) and a newer **Tauri + Rust + Svelte** desktop app (`app/`, Windows-only for now) with a live, clickable, filterable validation log. Bash CLI scripts (`scripts/`) cover batch validation and renaming.
+The product is a **Tauri + Rust + Svelte** desktop app (`app/`, Windows-only) with a live, clickable, filterable validation log. Bash CLI scripts (`scripts/`) cover batch validation and renaming. The original PowerShell/WinForms tool was removed from master; it remains at tag `v1.0.0` (`windows/`).
 
 ## Key Commands
 
-### Windows GUI Tool (on Windows)
-```powershell
-# Run the validator
-powershell -ExecutionPolicy Bypass -STA -File windows\SEPA-Validator.ps1
-
-# Build standalone EXE (requires: Install-Module ps2exe -Scope CurrentUser)
-cd windows
-powershell -ExecutionPolicy Bypass -File .\build.ps1
-# Output: windows/dist/SEPA-Validator.exe
-```
-
-### Tauri/Rust App (on Windows) — `app/`
+### Tauri/Rust App (on Windows): `app/`
 ```sh
 cd app && npm install
 npx tauri dev                      # run with hot-reload
@@ -29,6 +18,7 @@ npm run check && npm test          # svelte-check + vitest (frontend)
 node scripts/third-party-notices.mjs   # regenerate app/THIRD-PARTY-NOTICES.txt after dependency changes (CI checks it)
 cd src-tauri && cargo test         # backend tests; unit tests use the committed mini XSD in
                                    # tests/fixtures/, the 2 spike tests skip without private data
+cd src-tauri && cargo fmt          # CI runs cargo fmt --check and clippy -D warnings
 cd app && npx tauri build --no-bundle   # standalone exe -> src-tauri/target/release/app.exe
 ```
 First-time native setup (vcpkg+libxml2, libclang, local `.cargo/config.toml`) is in `app/README.md`.
@@ -37,63 +27,75 @@ First-time native setup (vcpkg+libxml2, libclang, local `.cargo/config.toml`) is
 ```bash
 ./scripts/validate.sh file.xml                           # Validate single file
 ./scripts/validate.sh path/to/folder/                    # Validate all XMLs in folder
-./scripts/validate.sh --csv report.csv *.xml             # Export results to CSV
+./scripts/validate.sh --export report.txt --csv report.csv *.xml   # Reports (all errors per file)
 ./scripts/validate_all.sh to_check analysis              # Batch validate, write CSV report
-./scripts/rename_xml_by_date_company_format.sh to_check analysis  # Rename by date/company
+./scripts/rename_xml_by_date_company_format.sh to_check analysis  # Rename by date/company/format
+bash scripts/validate.test.sh                            # Tests for the scripts (needs xmllint + rg)
 ```
 
-Prerequisites: `bash`, `xmllint` (for validate.sh), `rg` (ripgrep, for validate_all.sh).
+Prerequisites: `bash`, `xmllint` (always run with `--nonet`), `rg` (ripgrep, for validate_all.sh and the rename scripts; they stop with a clear message without it). On this Windows machine the scripts can be run in WSL (`archlinux` has xmllint and rg).
 
 ## Architecture
-
-### Windows GUI (`windows/SEPA-Validator.ps1`)
-
-Single-file PowerShell WinForms application. Key sections in order:
-
-1. **Schema config** — `$SchemaMap` maps XML namespaces to XSD filenames. `$EmbeddedSchemas` is populated by build.ps1 for EXE mode, otherwise schemas load from `schemas/` subfolder.
-2. **Validation engine** — `Get-XmlNamespace` reads the first element's namespace. `Test-SepaXml` does full XSD validation via .NET `System.Xml.Schema.XmlSchemaSet`. Schema compilation is cached per-namespace in `$script:SchemaCache`.
-3. **GUI** — WinForms controls with docked layout. Controls are added to the form in reverse dock-priority order (last added = docks first).
-4. **Event handlers** — Drag & drop, file/folder dialogs, grid selection, export.
 
 ### Tauri/Rust App (`app/`)
 
 Tauri v2 backend (Rust, `src-tauri/`) + Svelte 5/TypeScript/Vite frontend (`src/`).
 
-- **Backend modules** (`src-tauri/src/`): `model` (serde DTOs `ValidationResult`/`Status`/`Message`), `schema` (namespace→XSD filename map plus `SWISS_VARIANTS` for SPS schemas that share an ISO namespace, picked via `resolve(ns, swiss)`; no embedded bytes), `validator` (`detect_namespace` via quick-xml, `is_swiss` (first debtor IBAN CH/LI or `.ch.` schemaLocation) + `Validator` with a per-run compiled-schema cache loading XSDs at runtime from `app_data_dir()/schemas/`, mapping libxml `StructuredError` to located messages), `scanner` (recursive `.xml` expansion), `commands` (`start_validation`, `read_file`, `write_text_file`, `schema_status`, `import_schemas`, `open_schema_dir`).
-- **Live streaming**: `start_validation` runs on a worker thread (libxml types are not `Send`) and streams `ValidationEvent`s (started/result/finished) to the frontend over a `tauri::ipc::Channel`.
-- **XSD engine**: validation is done by **libxml2** (the `libxml` crate), not .NET — error wording differs from the PowerShell tool but verdicts are equivalent.
-- **Native build deps** (one-time, documented in `app/README.md`): vcpkg `libxml2[core,zlib]:x64-windows-static-md` (no iconv: avoids statically linking LGPL libiconv), `libclang` (PyPI wheel) for bindgen, and a **gitignored** `src-tauri/.cargo/config.toml` with `[env]` (`VCPKG_ROOT`, `VCPKGRS_TRIPLET`, `LIBCLANG_PATH`). `build.rs` links `bcrypt` (libxml2 ≥ 2.15 needs `BCryptGenRandom`). XSDs are no longer embedded; the app loads them at runtime from `app_data_dir()/schemas/`, imported via the **Schemas…** dialog.
-
-### Critical implementation constraints (PowerShell 5.1 / WinForms)
-
-- **`XmlResolver = $null`** must be set on all `XmlReaderSettings` and `XmlSchemaSet` instances, otherwise validation hangs trying to resolve external resources over the network.
-- **`-STA` flag** is required in the CMD launcher — WinForms needs Single-Thread Apartment mode.
-- **No `Set-StrictMode`** — `StrictMode -Version Latest` breaks `.Count` on .NET collection objects in PS 5.1.
-- **WinForms dock order** — controls added LAST to `$form.Controls` dock FIRST. Getting this wrong causes layout issues (panels overlapping, wrong sizing).
-- **`[System.Windows.Forms.Application]::DoEvents()`** in validation loop keeps UI responsive.
-
-### Build process (`windows/build.ps1`)
-
-Reads XSD files from `xml_schema/`, GZip-compresses and Base64-encodes them, injects into SEPA-Validator.ps1 at the `# @@EMBEDDED_SCHEMAS@@` marker, then compiles via ps2exe to a standalone EXE.
+- **Backend modules** (`src-tauri/src/`):
+  - `model`: serde DTOs `ValidationResult`/`Status`/`Message` (with an optional `hint`).
+  - `schema`: namespace→XSD filename map plus `SWISS_VARIANTS` for SPS schemas that share an ISO namespace, picked via `resolve(ns, swiss)`.
+  - `formatting`: the meaning-preserving pretty-printer used for both the viewer and validation, so line numbers match. Leaf text stays verbatim; it rejects DOCTYPE, unclosed elements and non-UTF-8.
+  - `validator`: `detect_namespace`, `is_swiss`, and `Validator`.
+    - Strict parse via `xmlCtxtReadMemory` (no recover, NONET, BIG_LINES).
+    - `xmlSchemaValidateDoc` called directly, because the crate's wrapper panics.
+    - A per-run schema cache, loaded from `app_data_dir()/schemas/`.
+  - `messages`: strips `{namespace}` prefixes and adds plain-language hints.
+  - `plausibility`: warnings after XSD validation:
+    - NbOfTxs/CtrlSum vs. the actual transactions
+    - IBAN mod-97
+    - past dates (DK `1999-01-01` = as soon as possible)
+    - duplicate EndToEndId
+  - `payments`: the Overview/Remittance summary.
+  - `scanner`: recursive `.xml` expansion.
+  - `commands`: the IPC surface:
+    - Validation: `start_validation`/`cancel_validation` with `RunState`; `run_batch` survives panics.
+    - Reading: `read_formatted`, `read_payment_summary`.
+    - Writing: `write_text_file` and `save_formatted` (guarded by `check_export_path`).
+    - Schemas: `schema_status`, `import_schemas` (ZIP: safe names, 10 MB cap), `open_schema_dir`.
+    - Links: `open_url` (https allowlist).
+- **Live streaming**: `start_validation` runs on a worker thread (libxml types are not `Send`) and streams `ValidationEvent`s (started/result/finished) over a `tauri::ipc::Channel`. The frontend (`lib/validation.ts`) ignores events from superseded runs. The viewer and summary loads use request tokens (`lib/latest.ts`).
+- **Security**: strict CSP in `tauri.conf.json`. Style-src nonces are disabled so CodeMirror's inline styles work.
+- **Native build deps** (one-time, documented in `app/README.md`):
+  - vcpkg `libxml2[core,zlib]:x64-windows-static-md`. No iconv, to avoid statically linking LGPL libiconv.
+  - `libclang` (PyPI wheel) for bindgen.
+  - A **gitignored** `src-tauri/.cargo/config.toml` with `[env]` (`VCPKG_ROOT`, `VCPKGRS_TRIPLET`, `LIBCLANG_PATH`).
+  - `build.rs` links `bcrypt` (libxml2 ≥ 2.15 needs `BCryptGenRandom`).
+  - XSDs are not embedded; they are imported via the **Schemas…** dialog.
 
 ## Data Directories (gitignored)
 
-- `xml_schema/` — XSD schemas (not redistributable, download from iso20022.org or ebics.de)
-- `to_check/` — XML files sorted into `inbox/`, `valid/`, `invalid/`, `duplicates/`, `archive/`
-- `analysis/` — Generated CSV/Markdown validation reports
-- `scripts/` — Bash CLI scripts for validation and renaming (tracked in git)
+- `xml_schema/`: XSD schemas (not redistributable; download from iso20022.org or ebics.de)
+- `to_check/`: XML files sorted into `inbox/`, `valid/`, `invalid/`, `duplicates/`, `archive/`
+- `analysis/`: generated CSV/Markdown validation reports
 
 ## CI
 
 `.github/workflows/ci.yml` runs on every PR and push to master:
-- **PII guard** (ubuntu): `scripts/pii-guard.sh <base>` fails on any `.xml`/`.xsd` outside `app/src-tauri/tests/fixtures/`, including files added and later deleted within the PR. Never commit payment files or ISO/SIX schemas; put synthetic test data in `tests/fixtures/`.
-- **Build & test** (windows): `npm run check`, `npm test`, `npm run build`, then `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` (run `cargo fmt` before committing Rust changes). libxml2 comes from vcpkg pinned to the same commit as the local setup and is cached as a vcpkg binary package.
-- **Release** (`release.yml`, on tag `v*`): signed NSIS build via `tauri-action`, draft release with installer, `.sig`, `latest.json` and portable exe. Version single source: `"version"` in `app/src-tauri/tauri.conf.json`; bump with `node scripts/bump-version.mjs X.Y.Z`. Full procedure, environment and signing-key handling: `RELEASING.md`.
+- **PII guard** (ubuntu): `scripts/pii-guard.sh <base>` fails on any `.xml`/`.xsd` outside `app/src-tauri/tests/fixtures/`, including files added and later deleted within the PR. Never commit payment files or ISO/SIX schemas; put synthetic test data in `tests/fixtures/`. The job also runs the Node script tests and `scripts/validate.test.sh`.
+- **Build & test** (windows):
+  - Frontend: `npm run check`, `npm test`, `npm run build`.
+  - Rust: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.
+  - Notices: the freshness check for `THIRD-PARTY-NOTICES.txt`.
+  - libxml2 comes from vcpkg pinned to the same commit as the local setup and is cached as a vcpkg binary package.
+- **Release** (`release.yml`, on tag `v*`):
+  - A signed NSIS build via `tauri-action` creates a draft release with the installer, `.sig`, `latest.json`, the portable exe and the notices.
+  - The version has a single source: `"version"` in `app/src-tauri/tauri.conf.json`. Bump it with `node scripts/bump-version.mjs X.Y.Z`.
+  - The full procedure, the environment and signing-key handling are in `RELEASING.md`.
 - `claude-review` (separate workflow) only posts a review comment; a green check does not always mean it reviewed.
 
 ## Conventions
 
-- Commit format: `type(scope): short summary` (e.g., `fix(validator): ...`, `feat(windows): ...`, `docs: ...`)
-- Shell scripts use `set -euo pipefail`
+- Commit format: `type(scope): short summary` (e.g., `fix(validator): ...`, `feat(app): ...`, `docs: ...`)
+- Shell scripts use `set -euo pipefail` and LF line endings (`.gitattributes`)
 - XML file naming: `YYYYMMDD_COMPANY_FORMAT.xml` with `_1`, `_2` on collisions
 - Validation reports are kept for traceability; never delete prior timestamped reports

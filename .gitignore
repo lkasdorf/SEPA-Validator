@@ -6,10 +6,6 @@ Reference/
 # XSD schemas (not redistributable)
 xml_schema/
 
-# Build output
-windows/dist/
-windows/schemas/
-
 # Windows metadata
 *:Zone.Identifier
 Thumbs.db
