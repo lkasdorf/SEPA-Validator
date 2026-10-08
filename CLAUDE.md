@@ -25,7 +25,9 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```sh
 cd app && npm install
 npx tauri dev                      # run with hot-reload
-cd src-tauri && cargo test         # backend tests (unit + 2 spike)
+npm run check && npm test          # svelte-check + vitest (frontend)
+cd src-tauri && cargo test         # backend tests; unit tests use the committed mini XSD in
+                                   # tests/fixtures/, the 2 spike tests skip without private data
 cd app && npx tauri build --no-bundle   # standalone exe -> src-tauri/target/release/app.exe
 ```
 First-time native setup (vcpkg+libxml2, libclang, local `.cargo/config.toml`) is in `app/README.md`.
@@ -79,6 +81,13 @@ Reads XSD files from `xml_schema/`, GZip-compresses and Base64-encodes them, inj
 - `to_check/` — XML files sorted into `inbox/`, `valid/`, `invalid/`, `duplicates/`, `archive/`
 - `analysis/` — Generated CSV/Markdown validation reports
 - `scripts/` — Bash CLI scripts for validation and renaming (tracked in git)
+
+## CI
+
+`.github/workflows/ci.yml` runs on every PR and push to master:
+- **PII guard** (ubuntu): `scripts/pii-guard.sh <base>` fails on any `.xml`/`.xsd` outside `app/src-tauri/tests/fixtures/`, including files added and later deleted within the PR. Never commit payment files or ISO/SIX schemas; put synthetic test data in `tests/fixtures/`.
+- **Build & test** (windows): `npm run check`, `npm test`, `npm run build`, then `cargo clippy --all-targets -- -D warnings` and `cargo test`. libxml2 comes from vcpkg pinned to the same commit as the local setup and is cached as a vcpkg binary package.
+- `claude-review` (separate workflow) only posts a review comment; a green check does not always mean it reviewed.
 
 ## Conventions
 
