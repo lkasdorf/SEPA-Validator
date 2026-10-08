@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Plausibility checks** beyond the XSD, shown as warnings with a line to jump to and a hint:
+  - `NbOfTxs` and `CtrlSum`, in `GrpHdr` and in every `PmtInf`, are checked against the actual transactions (amounts compared exactly as decimals).
+  - IBAN check digits (mod 97).
+  - Requested execution and collection dates in the past (the DK value `1999-01-01`, "as soon as possible", is accepted). Many affected payment blocks produce one warning.
+  - EndToEndIds used more than once (`NOTPROVIDED` excepted).
+  A schema-valid file with such findings is shown as **Warnings** instead of OK.
 - **Readable error messages with hints.** Namespace prefixes such as `{urn:iso:std:iso:20022:tech:xsd:pain.001.001.09}` are removed. Common mistakes get a plain-language hint below the message: a missing or unexpected element, a code that isn't in the allowed list, a decimal comma, leading or trailing spaces, an empty value, or a value that is too long. Hints are included in the TXT export.
 - **Empty state** with a drop zone, Select Files/Folder buttons and a warning when schemas are missing; a drop overlay shows while files are dragged over the window.
 - **Save formatted…** in the XML tab saves the indented XML shown in the viewer as a new file, next to the original as `<name>_formatted.xml` by default. Only whitespace between tags changes; all values stay byte-identical, and the original file is never overwritten.

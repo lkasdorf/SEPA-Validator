@@ -274,6 +274,11 @@ impl Validator {
                 hint: None,
             });
         }
+        // Checks the schema can't express (control sums, IBAN check digits, ...).
+        messages.extend(crate::plausibility::check(
+            &formatted,
+            &crate::plausibility::today(),
+        ));
 
         ValidationResult::from_messages(file, path_str, ns, schema_name.to_string(), messages)
     }
@@ -471,7 +476,7 @@ mod tests {
         );
         let r = super::Validator::new(dir).validate_file(&p);
         assert_eq!(r.schema, "pain.001.001.09.ch.03.xsd");
-        assert_eq!(r.status, Status::Ok, "messages: {:?}", r.messages);
+        assert_eq!(r.errors, 0, "schema-valid, messages: {:?}", r.messages);
     }
 
     #[test]
@@ -489,7 +494,7 @@ mod tests {
         ] {
             let r = v.validate_file(&examples.join(file));
             assert_eq!(r.schema, schema);
-            assert_eq!(r.status, Status::Ok, "{file}: {:?}", r.messages);
+            assert_eq!(r.errors, 0, "{file} must be schema-valid: {:?}", r.messages);
         }
     }
 
@@ -526,7 +531,7 @@ mod tests {
         }
         let mut v = super::Validator::new(test_schema_dir());
         let r = v.validate_file(&f);
-        assert_eq!(r.status, Status::Ok, "messages: {:?}", r.messages);
+        assert_eq!(r.errors, 0, "schema-valid, messages: {:?}", r.messages);
     }
 
     #[test]
