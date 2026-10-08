@@ -153,18 +153,36 @@ fn crashed_result(file: &Path, payload: &(dyn std::any::Any + Send)) -> Validati
     }
 }
 
-/// Read a file's text for the code viewer (lossy UTF-8).
-#[tauri::command]
-pub fn read_file(path: String) -> Result<String, String> {
-    std::fs::read(&path)
-        .map(|b| String::from_utf8_lossy(&b).into_owned())
-        .map_err(|e| e.to_string())
-}
-
-/// Write text to an absolute path chosen via the save dialog.
+/// Write an export (chosen via the save dialog) to disk; see `check_export_path`.
 #[tauri::command]
 pub fn write_text_file(path: String, contents: String) -> Result<(), String> {
-    std::fs::write(&path, contents).map_err(|e| e.to_string())
+    let path = check_export_path(&path)?;
+    std::fs::write(path, contents).map_err(|e| e.to_string())
+}
+
+/// Exports may only create `.txt`/`.csv` files in an existing folder on a local
+/// drive: no other extensions (nothing the webview could write and later run),
+/// no UNC/device paths, no alternate data streams. (Windows-only app.)
+fn check_export_path(path: &str) -> Result<PathBuf, String> {
+    use std::path::{Component, Prefix};
+    let refuse = || format!("Refusing to write to {path}");
+    let p = PathBuf::from(path);
+    let local_drive = matches!(
+        p.components().next(),
+        Some(Component::Prefix(pre)) if matches!(pre.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
+    );
+    if !local_drive || !p.is_absolute() {
+        return Err(refuse());
+    }
+    let name = p.file_name().and_then(|n| n.to_str()).ok_or_else(refuse)?;
+    let export_ext = Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("txt") || e.eq_ignore_ascii_case("csv"));
+    if !export_ext || name.contains(':') || !p.parent().is_some_and(Path::is_dir) {
+        return Err(refuse());
+    }
+    Ok(p)
 }
 
 /// Return the pretty-printed XML for the viewer. Falls back to raw bytes if the
@@ -257,33 +275,72 @@ fn extract_zip_xsds(zip_path: &Path, dest: &Path) -> (u32, Vec<String>) {
             continue;
         }
         let name = entry.name().to_string();
-        let base = name
-            .rsplit(|c| c == '/' || c == '\\')
-            .next()
-            .unwrap_or("")
-            .to_string();
+        let base = name.rsplit(['/', '\\']).next().unwrap_or("").to_string();
         if base.is_empty() || !base.to_lowercase().ends_with(".xsd") {
             continue;
         }
-        match std::fs::File::create(dest.join(&base)) {
-            Ok(mut out) => {
-                if std::io::copy(&mut entry, &mut out).is_ok() {
-                    imported += 1;
-                } else {
-                    skipped.push(format!("{}!{}", zip_path.display(), base));
-                }
-            }
-            Err(_) => skipped.push(format!("{}!{}", zip_path.display(), base)),
+        let ok = is_safe_xsd_name(&base)
+            && entry.size() <= MAX_XSD_BYTES
+            && write_capped(&mut entry, &dest.join(&base)).is_ok();
+        if ok {
+            imported += 1;
+        } else {
+            skipped.push(format!("{}!{}", zip_path.display(), name));
         }
     }
     (imported, skipped)
 }
 
 fn copy_one(src: &Path, dest: &Path, imported: &mut u32, skipped: &mut Vec<String>) {
-    match src.file_name() {
-        Some(name) if std::fs::copy(src, dest.join(name)).is_ok() => *imported += 1,
-        _ => skipped.push(src.display().to_string()),
+    let copied = src.file_name().is_some_and(|name| {
+        std::fs::File::open(src)
+            .and_then(|mut f| write_capped(&mut f, &dest.join(name)))
+            .is_ok()
+    });
+    if copied {
+        *imported += 1;
+    } else {
+        skipped.push(src.display().to_string());
     }
+}
+
+/// Largest schema file we import (the ISO/SIX XSDs are well under 1 MB).
+const MAX_XSD_BYTES: u64 = 10 * 1024 * 1024;
+
+/// A plain file name for an imported schema. Rejects anything Windows would
+/// resolve elsewhere, such as drive-relative `C:x.xsd` or a stream `a:b.xsd`.
+fn is_safe_xsd_name(name: &str) -> bool {
+    name.len() <= 200
+        && !name.starts_with('.')
+        && name.to_ascii_lowercase().ends_with(".xsd")
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+
+/// Copy at most `MAX_XSD_BYTES` into `target` through a temp file, so an
+/// oversized or failed copy never leaves a truncated schema behind.
+fn write_capped(src: &mut impl std::io::Read, target: &Path) -> std::io::Result<()> {
+    let tmp = target.with_extension("xsd.part");
+    let result = (|| {
+        let mut out = std::fs::File::create(&tmp)?;
+        let n = std::io::copy(
+            &mut std::io::Read::take(src.by_ref(), MAX_XSD_BYTES + 1),
+            &mut out,
+        )?;
+        if n > MAX_XSD_BYTES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "schema file too large",
+            ));
+        }
+        drop(out);
+        std::fs::rename(&tmp, target)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 /// Copy `.xsd` files from the given paths (files or directories) into `dest`.
@@ -329,21 +386,52 @@ pub fn import_schemas(app: AppHandle, paths: Vec<String>) -> Result<ImportResult
 #[tauri::command]
 pub fn open_schema_dir(app: AppHandle) -> Result<(), String> {
     let dir = schema_dir(&app)?;
-    std::process::Command::new("explorer")
-        .arg(&dir)
+    explorer().arg(&dir).spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Open a URL in the default browser (Windows). Only allow-listed https links.
+#[tauri::command]
+pub fn open_url(url: String) -> Result<(), String> {
+    let url = check_url(&url)?;
+    explorer()
+        .arg(url.as_str())
         .spawn()
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-/// Open a URL in the default browser (Windows).
-#[tauri::command]
-pub fn open_url(url: String) -> Result<(), String> {
-    std::process::Command::new("explorer")
-        .arg(&url)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    Ok(())
+/// Hosts the app links to (repo, schema download pages).
+const ALLOWED_URL_HOSTS: &[&str] = &["github.com", "www.ebics.de", "www.six-group.com"];
+
+/// Only `https://` links to `ALLOWED_URL_HOSTS`, with no credentials or custom
+/// port. Everything else (local or UNC paths, `file:`, protocol handlers such as
+/// `ms-msdt:`) is refused, because explorer would happily launch it.
+fn check_url(url: &str) -> Result<tauri::Url, String> {
+    let refuse = || format!("Refusing to open {url}");
+    let parsed = tauri::Url::parse(url).map_err(|_| refuse())?;
+    let allowed = parsed.scheme() == "https"
+        && parsed
+            .host_str()
+            .is_some_and(|h| ALLOWED_URL_HOSTS.contains(&h))
+        && parsed.username().is_empty()
+        && parsed.password().is_none()
+        && parsed.port().is_none();
+    if allowed {
+        Ok(parsed)
+    } else {
+        Err(refuse())
+    }
+}
+
+/// `explorer.exe` by absolute path, so a same-named program next to the app or
+/// in the working directory can't be picked up instead.
+fn explorer() -> std::process::Command {
+    let exe = std::env::var_os("WINDIR")
+        .map(|w| PathBuf::from(w).join("explorer.exe"))
+        .filter(|p| p.is_file())
+        .unwrap_or_else(|| PathBuf::from("explorer"));
+    std::process::Command::new(exe)
 }
 
 #[cfg(test)]
@@ -529,5 +617,117 @@ mod tests {
         assert!(dest.join("a.xsd").exists());
         assert!(dest.join("b.XSD").exists());
         assert!(!dest.join("c.txt").exists());
+    }
+
+    #[test]
+    fn open_url_allows_https_to_known_hosts() {
+        for u in [
+            "https://github.com/lkasdorf/SEPA-Validator/issues/new",
+            "https://www.ebics.de/de/datenformate",
+            "https://www.six-group.com/en/products-services/banking-services/payment-standardization/standards/iso-20022.html",
+        ] {
+            assert!(check_url(u).is_ok(), "{u}");
+        }
+    }
+
+    #[test]
+    fn open_url_rejects_everything_else() {
+        for u in [
+            "http://github.com/",
+            "https://evil.example/",
+            "https://github.com.evil.example/",
+            "https://user@github.com/",
+            "https://github.com:8443/",
+            "file:///C:/Windows/System32/calc.exe",
+            r"C:\Windows\System32\calc.exe",
+            r"\\attacker\share\x.exe",
+            "ms-msdt:/id PCWDiagnostic",
+            "search-ms:query=x",
+            "javascript:alert(1)",
+            "",
+        ] {
+            assert!(check_url(u).is_err(), "{u}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn export_path_allows_txt_and_csv_in_existing_folders() {
+        let dir = fresh_dir("sepa_export_ok");
+        for name in ["report.csv", "report.TXT"] {
+            let p = dir.join(name).display().to_string();
+            assert!(check_export_path(&p).is_ok(), "{p}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn export_path_rejects_other_targets() {
+        let dir = fresh_dir("sepa_export_bad");
+        let d = dir.display().to_string();
+        for p in [
+            format!(r"{d}\evil.bat"),
+            format!(r"{d}\evil.ps1"),
+            format!(r"{d}\noext"),
+            format!(r"{d}\a.bat:b.txt"),
+            format!(r"{d}\missing\report.csv"),
+            "report.csv".to_string(),
+            r"\\attacker\share\report.csv".to_string(),
+            r"\\.\C:\report.csv".to_string(),
+        ] {
+            assert!(check_export_path(&p).is_err(), "{p}");
+        }
+    }
+
+    fn zip_with(path: &Path, entries: &[(&str, Vec<u8>)]) {
+        use std::io::Write as _;
+        let _ = std::fs::remove_file(path);
+        let f = std::fs::File::create(path).unwrap();
+        let mut zw = zip::ZipWriter::new(f);
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        for (name, data) in entries {
+            zw.start_file(*name, opts).unwrap();
+            zw.write_all(data).unwrap();
+        }
+        zw.finish().unwrap();
+    }
+
+    #[test]
+    fn zip_entries_with_drive_relative_names_are_skipped() {
+        let dest = fresh_dir("sepa_imp_drive_rel");
+        let zip_path = std::env::temp_dir().join("sepa_imp_drive_rel.zip");
+        zip_with(
+            &zip_path,
+            &[
+                ("C:evil.xsd", b"<x/>".to_vec()),
+                ("sub/C:evil2.xsd", b"<x/>".to_vec()),
+                ("ok.xsd", b"<x/>".to_vec()),
+            ],
+        );
+        let r = copy_xsds(&[zip_path.display().to_string()], &dest);
+        assert_eq!(r.imported, 1, "skipped: {:?}", r.skipped);
+        assert_eq!(r.skipped.len(), 2, "skipped: {:?}", r.skipped);
+        assert!(!Path::new("evil.xsd").exists() && !Path::new("evil2.xsd").exists());
+        assert_eq!(std::fs::read_dir(&dest).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn oversized_zip_entries_are_skipped_without_leftovers() {
+        let dest = fresh_dir("sepa_imp_oversize");
+        let zip_path = std::env::temp_dir().join("sepa_imp_oversize.zip");
+        let huge = vec![b' '; (MAX_XSD_BYTES + 1) as usize];
+        zip_with(
+            &zip_path,
+            &[("huge.xsd", huge), ("ok.xsd", b"<x/>".to_vec())],
+        );
+        let r = copy_xsds(&[zip_path.display().to_string()], &dest);
+        assert_eq!(r.imported, 1, "skipped: {:?}", r.skipped);
+        assert!(!dest.join("huge.xsd").exists());
+        assert_eq!(
+            std::fs::read_dir(&dest).unwrap().count(),
+            1,
+            "no partial files"
+        );
     }
 }

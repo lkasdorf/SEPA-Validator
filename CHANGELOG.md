@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Re-validating the same file reloads its content.** Before, the viewer and Overview kept showing the old text and summary.
 - Error-line highlighting no longer breaks when errors are reported out of line order.
 - Dropping a large folder no longer blocks the window while the folder is scanned.
+
+### Security
+- **Content Security Policy enabled.** Scripts load only from the app itself, so injected inline scripts and event handlers are blocked.
+- **Links are allow-listed.** The app opens only `https://` links to github.com, ebics.de and six-group.com. Local paths, network shares, `file:` and other protocol handlers are refused.
+- **Exports are path-checked.** The app writes only `.txt`/`.csv` files into an existing folder on a local drive. The unused raw file-read command was removed.
+- **ZIP schema import hardened.** Entries with names Windows would resolve outside the schema folder (such as `C:evil.xsd`) are skipped, schema files are capped at 10 MB, and a failed or oversized import leaves no partial file behind.
 - **Files that are not well-formed XML are no longer reported OK.** Truncated files, a bare `&`, control characters, a second root element or text after `</Document>` now fail with a located error. Before, libxml's recovery mode silently repaired them.
 - **Pretty-printing no longer changes the verdict.** Leading or trailing spaces in values (e.g. ` DE89…` in `<IBAN>`, `COBADEFFXXX ` in `<BIC>`) and empty fields like `<Nm></Nm>` are now validated exactly as they appear in the file. Before, they were trimmed or padded and passed.
 - **A single bad file no longer stops the run.** DOCTYPE declarations are rejected, undefined entities are reported, and an internal error marks just that file as an error. The run always finishes; before, the UI could hang at "Validating…".
