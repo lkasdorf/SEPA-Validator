@@ -9,11 +9,11 @@
   import SchemaDialog from "./lib/SchemaDialog.svelte";
   import AboutDialog from "./lib/AboutDialog.svelte";
   import UpdateDialog from "./lib/UpdateDialog.svelte";
-  import { selectedResult, openViewerSearch, foldAllInViewer, unfoldAllInViewer, schemaDialogOpen, viewerLarge, aboutDialogOpen, updateDialogOpen } from "./lib/stores";
+  import { selectedResult, runId, openViewerSearch, foldAllInViewer, unfoldAllInViewer, schemaDialogOpen, viewerLarge, aboutDialogOpen, updateDialogOpen } from "./lib/stores";
   import { loadPaymentSummary } from "./lib/paymentSummary";
 
   let viewerTab: "xml" | "summary" | "remittance" = "xml";
-  $: if (viewerTab !== "xml") loadPaymentSummary($selectedResult?.path);
+  $: if (viewerTab !== "xml") loadPaymentSummary($selectedResult?.path, $runId);
 
   let leftWidth = 260;
   let rightWidth = 360;

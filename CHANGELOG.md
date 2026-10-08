@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Cancel** button while a validation runs. The UI stops at once, and the backend stops after the file it is currently validating.
+
 ### Fixed
+- **Starting a new validation while one is running no longer mixes results.** Each run has an id, late events from an older run are ignored, and the backend stops the older run.
+- **The XML viewer and Overview/Remittance tabs no longer show the previous file.** Before, a slower load could overwrite a newer selection. The viewer is dimmed while a file loads, and clicking an error doesn't jump while the text still belongs to another file.
+- **Re-validating the same file reloads its content.** Before, the viewer and Overview kept showing the old text and summary.
+- Error-line highlighting no longer breaks when errors are reported out of line order.
+- Dropping a large folder no longer blocks the window while the folder is scanned.
 - **Files that are not well-formed XML are no longer reported OK.** Truncated files, a bare `&`, control characters, a second root element or text after `</Document>` now fail with a located error. Before, libxml's recovery mode silently repaired them.
 - **Pretty-printing no longer changes the verdict.** Leading or trailing spaces in values (e.g. ` DE89…` in `<IBAN>`, `COBADEFFXXX ` in `<BIC>`) and empty fields like `<Nm></Nm>` are now validated exactly as they appear in the file. Before, they were trimmed or padded and passed.
 - **A single bad file no longer stops the run.** DOCTYPE declarations are rejected, undefined entities are reported, and an internal error marks just that file as an error. The run always finishes; before, the UI could hang at "Validating…".

@@ -7,6 +7,7 @@
     <div class="bar"><div class="fill" style="width:{$progress.total ? ($progress.done / $progress.total) * 100 : 0}%"></div></div>
     <span>Validating {$progress.done}/{$progress.total}…</span>
   {:else}
+    {#if $progress.cancelled}<span class="warn">Cancelled after {$progress.done} of {$progress.total}</span>{/if}
     <span>{$summary.total} files</span>
     <span class="ok">OK {$summary.ok}</span>
     <span class="err">Invalid {$summary.invalid}</span>

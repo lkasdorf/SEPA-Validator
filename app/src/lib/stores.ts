@@ -3,9 +3,11 @@ import type { ValidationResult } from "./types";
 
 export const results = writable<ValidationResult[]>([]);
 export const selectedIndex = writable<number>(-1);
-export const progress = writable<{ done: number; total: number; running: boolean }>({
-  done: 0, total: 0, running: false,
+export const progress = writable<{ done: number; total: number; running: boolean; cancelled: boolean }>({
+  done: 0, total: 0, running: false, cancelled: false,
 });
+/** Id of the current validation run; bumps on every run so per-file caches reload. */
+export const runId = writable<number>(0);
 export type LogFilter = "all" | "errors" | "warnings";
 export const logFilter = writable<LogFilter>("all");
 export const search = writable<string>("");
