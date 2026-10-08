@@ -19,6 +19,7 @@ export async function exportTxt(results: ValidationResult[]): Promise<void> {
     r.messages.forEach((m, i) => {
       const loc = m.line ? ` (Line ${m.line}${m.column ? `, Col ${m.column}` : ""})` : "";
       out += `[${i + 1}] ${m.severity.toUpperCase()}: ${m.text}${loc}\n`;
+      if (m.hint) out += `    Hint: ${m.hint}\n`;
     });
     out += `${"-".repeat(80)}\n`;
   }

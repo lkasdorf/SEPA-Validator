@@ -1,3 +1,4 @@
+import { open } from "@tauri-apps/plugin-dialog";
 import { startValidation, cancelValidation as cancelValidationApi } from "./api";
 import { results, selectedIndex, progress, runId } from "./stores";
 import type { ValidationEvent } from "./types";
@@ -30,6 +31,16 @@ export async function cancelValidation(): Promise<void> {
   currentRun++;
   progress.update((p) => ({ ...p, running: false, cancelled: true }));
   await cancelValidationApi();
+}
+
+export async function pickFiles(): Promise<void> {
+  const sel = await open({ multiple: true, filters: [{ name: "XML", extensions: ["xml"] }] });
+  if (sel) await runValidation(Array.isArray(sel) ? sel : [sel]);
+}
+
+export async function pickFolder(): Promise<void> {
+  const sel = await open({ directory: true });
+  if (sel) await runValidation([sel as string]);
 }
 
 function handle(ev: ValidationEvent) {

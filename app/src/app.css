@@ -4,7 +4,8 @@
   --fg: #1b1e24; --muted: #6b7280;
   --accent: #1f53c2; --accent-fg: #ffffff;
   --sel: color-mix(in srgb, var(--accent) 14%, transparent);
-  --ok: #1f8a4c; --err: #c4271c; --warn: #9d5d00;
+  --ok: #1a7a43; --err: #c4271c; --warn: #9d5d00;
+  --err-fg: #ffffff; --warn-fg: #ffffff; /* text on ERROR / WARN badges */
   --code-bg: #1e1e1e; --code-fg: #dcdcdc;
   --font-ui: "Segoe UI", system-ui, sans-serif;
   --font-mono: "Cascadia Mono", "Cascadia Code", "Consolas", ui-monospace, monospace;
@@ -16,7 +17,8 @@
   --fg: #e6e7ea; --muted: #9aa1ad;
   --accent: #3f6fe0; --accent-fg: #ffffff;
   --sel: color-mix(in srgb, var(--accent) 24%, transparent);
-  --ok: #4ec9b0; --err: #f44747; --warn: #ffc832;
+  --ok: #4ec9b0; --err: #ff5c5c; --warn: #ffc832;
+  --err-fg: #1b1e24; --warn-fg: #1b1e24;
   --code-bg: #1e1e1e; --code-fg: #dcdcdc;
 }
 
@@ -25,9 +27,9 @@ html, body, .app { height: 100%; margin: 0; }
 body { font: 14px var(--font-ui); background: var(--bg); color: var(--fg); }
 
 /* --- Layout --- */
-.app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+.app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; overflow: hidden; }
 .body { display: grid; min-height: 0; }
-.files, .viewer, .log { min-height: 0; overflow: hidden; background: var(--panel); }
+.files, .viewer, .log { min-height: 0; min-width: 0; overflow: hidden; background: var(--panel); }
 .viewer { display: flex; flex-direction: column; }
 .viewer-bar { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; padding: var(--sp-2); border-bottom: 1px solid var(--border); background: var(--chrome); flex: 0 0 auto; }
 .viewer-bar .viewer-note { font-size: 11px; color: var(--muted); align-self: center; }
@@ -37,6 +39,11 @@ body { font: 14px var(--font-ui); background: var(--bg); color: var(--fg); }
 .viewer-pane.hidden { display: none; }
 .gutter { background: var(--border); cursor: col-resize; }
 .gutter:hover { background: var(--accent); }
+.drop-overlay {
+  position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 12%, transparent); border: 3px dashed var(--accent);
+}
+.drop-overlay span { padding: var(--sp-2) var(--sp-4); border-radius: var(--radius); background: var(--accent); color: var(--accent-fg); font-weight: 600; }
 
 /* --- Buttons: one shared system --- */
 .btn {

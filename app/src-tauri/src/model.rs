@@ -14,6 +14,8 @@ pub struct Message {
     pub text: String,
     pub line: Option<u32>,
     pub column: Option<u32>,
+    /// Plain-language explanation for common mistakes (see `messages::hint_for`).
+    pub hint: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -101,6 +103,7 @@ mod tests {
             text: "boom".into(),
             line: Some(4),
             column: None,
+            hint: None,
         }];
         let r = ValidationResult::from_messages(
             "f.xml".into(),
@@ -120,6 +123,7 @@ mod tests {
             text: "hmm".into(),
             line: None,
             column: None,
+            hint: None,
         }];
         let r = ValidationResult::from_messages(
             "f.xml".into(),

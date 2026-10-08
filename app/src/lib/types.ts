@@ -6,6 +6,8 @@ export interface Message {
   text: string;
   line: number | null;
   column: number | null;
+  /** Plain-language explanation for common mistakes. */
+  hint: string | null;
 }
 
 export interface ValidationResult {
@@ -24,6 +26,8 @@ export type ValidationEvent =
   | { event: "result"; data: { index: number; result: ValidationResult } }
   | { event: "finished"; data: { total: number; cancelled: boolean } };
 
+const count = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
 /** Human label like the old tool: "INVALID (2 errors, 1 warning)". */
 export function statusLabel(r: ValidationResult): string {
   switch (r.status) {
@@ -31,7 +35,8 @@ export function statusLabel(r: ValidationResult): string {
     case "warnings": return `WARNINGS (${r.warnings})`;
     case "no_schema": return "NO SCHEMA";
     case "error": return "ERROR";
-    case "invalid": return `INVALID (${r.errors} errors, ${r.warnings} warnings)`;
+    case "invalid":
+      return `INVALID (${count(r.errors, "error")}${r.warnings ? `, ${count(r.warnings, "warning")}` : ""})`;
   }
 }
 

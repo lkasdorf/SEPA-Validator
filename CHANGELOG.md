@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Readable error messages with hints.** Namespace prefixes such as `{urn:iso:std:iso:20022:tech:xsd:pain.001.001.09}` are removed. Common mistakes get a plain-language hint below the message: a missing or unexpected element, a code that isn't in the allowed list, a decimal comma, leading or trailing spaces, an empty value, or a value that is too long. Hints are included in the TXT export.
+- **Empty state** with a drop zone, Select Files/Folder buttons and a warning when schemas are missing; a drop overlay shows while files are dragged over the window.
 - **Save formatted…** in the XML tab saves the indented XML shown in the viewer as a new file, next to the original as `<name>_formatted.xml` by default. Only whitespace between tags changes; all values stay byte-identical, and the original file is never overwritten.
 - **Cancel** button while a validation runs. The UI stops at once, and the backend stops after the file it is currently validating.
 
@@ -17,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Re-validating the same file reloads its content.** Before, the viewer and Overview kept showing the old text and summary.
 - Error-line highlighting no longer breaks when errors are reported out of line order.
 - Dropping a large folder no longer blocks the window while the folder is scanned.
+- **Log panel no longer overflows** at the default window size. Long messages wrap, the filter buttons stay visible, and the window no longer scrolls. At the minimum window size the XML viewer keeps at least 280 px.
+- **Readable status colors and badges.** The dark-mode WARN and ERROR badges, green text in light mode and red text on dark panels now meet the WCAG AA contrast ratio (4.5:1); a test guards the theme colors.
+- A valid file's log says so instead of "No matches", and status labels use the singular where needed ("1 error", "1 warning").
 
 ### Security
 - **Content Security Policy enabled.** Scripts load only from the app itself, so injected inline scripts and event handlers are blocked.

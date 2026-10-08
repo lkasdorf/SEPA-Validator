@@ -10,10 +10,12 @@
   import AboutDialog from "./lib/AboutDialog.svelte";
   import UpdateDialog from "./lib/UpdateDialog.svelte";
   import SaveFormatted from "./lib/SaveFormatted.svelte";
-  import { selectedResult, runId, openViewerSearch, foldAllInViewer, unfoldAllInViewer, schemaDialogOpen, viewerLarge, aboutDialogOpen, updateDialogOpen } from "./lib/stores";
+  import EmptyState from "./lib/EmptyState.svelte";
+  import { results, progress, dragging, selectedResult, runId, openViewerSearch, foldAllInViewer, unfoldAllInViewer, schemaDialogOpen, viewerLarge, aboutDialogOpen, updateDialogOpen } from "./lib/stores";
   import { loadPaymentSummary } from "./lib/paymentSummary";
 
   let viewerTab: "xml" | "summary" | "remittance" = "xml";
+  $: empty = $results.length === 0 && !$progress.running;
   $: if (viewerTab !== "xml") loadPaymentSummary($selectedResult?.path, $runId);
 
   let leftWidth = 260;
@@ -47,7 +49,8 @@
 
 <div class="app">
   <Toolbar />
-  <main class="body" style="grid-template-columns: {leftWidth}px 6px 1fr 6px {rightWidth}px;">
+  <!-- Side panels shrink toward their minimum before the viewer drops below 280px. -->
+  <main class="body" style="grid-template-columns: minmax(140px, {leftWidth}px) 6px minmax(280px, 1fr) 6px minmax(220px, {rightWidth}px);">
     <aside class="files"><FileList /></aside>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div class="gutter" role="separator" aria-orientation="vertical" on:mousedown={(e) => startDrag("left", e)}></div>
@@ -69,15 +72,17 @@
           {/if}
         {/if}
       </div>
-      <div class="viewer-pane" class:hidden={viewerTab !== "xml"}><CodeViewer /></div>
-      {#if viewerTab === "summary"}<SummaryView />{/if}
-      {#if viewerTab === "remittance"}<RemittanceView />{/if}
+      {#if empty}<EmptyState />{/if}
+      <div class="viewer-pane" class:hidden={viewerTab !== "xml" || empty}><CodeViewer /></div>
+      {#if viewerTab === "summary" && !empty}<SummaryView />{/if}
+      {#if viewerTab === "remittance" && !empty}<RemittanceView />{/if}
     </section>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div class="gutter" role="separator" aria-orientation="vertical" on:mousedown={(e) => startDrag("right", e)}></div>
     <section class="log"><LogPanel /></section>
   </main>
   <SummaryBar />
+  {#if $dragging && $results.length > 0}<div class="drop-overlay" aria-hidden="true"><span>Drop to validate</span></div>{/if}
   {#if $schemaDialogOpen}<SchemaDialog />{/if}
   {#if $aboutDialogOpen}<AboutDialog />{/if}
   {#if $updateDialogOpen}<UpdateDialog />{/if}
