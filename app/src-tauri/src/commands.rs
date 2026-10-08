@@ -4,7 +4,7 @@ use serde::Serialize;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager};
 
-use crate::model::ValidationResult;
+use crate::model::{Message, Severity, Status, ValidationResult};
 use crate::scanner;
 use crate::validator::Validator;
 
@@ -39,19 +39,64 @@ pub fn schema_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 #[tauri::command]
 pub fn start_validation(app: AppHandle, paths: Vec<String>, on_event: Channel<ValidationEvent>) {
     let files: Vec<PathBuf> = scanner::expand_paths(paths.iter().map(PathBuf::from));
-    let total = files.len();
     let dir = schema_dir(&app).unwrap_or_default();
 
     // libxml types are not Send: build the Validator inside the thread.
     std::thread::spawn(move || {
-        let _ = on_event.send(ValidationEvent::Started { total });
         let mut validator = Validator::new(dir);
-        for (index, file) in files.iter().enumerate() {
-            let result = validator.validate_file(file);
-            let _ = on_event.send(ValidationEvent::Result { index, result });
-        }
-        let _ = on_event.send(ValidationEvent::Finished { total });
+        run_batch(
+            &files,
+            |f| validator.validate_file(f),
+            |ev| {
+                let _ = on_event.send(ev);
+            },
+        );
     });
+}
+
+/// Validate `files` in order, emitting Started, one Result per file, then Finished.
+/// A panic while validating one file becomes an Error result for that file, so
+/// the run always continues and always finishes (the UI waits for Finished).
+fn run_batch(
+    files: &[PathBuf],
+    mut validate: impl FnMut(&Path) -> ValidationResult,
+    mut send: impl FnMut(ValidationEvent),
+) {
+    let total = files.len();
+    send(ValidationEvent::Started { total });
+    for (index, file) in files.iter().enumerate() {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| validate(file)))
+            .unwrap_or_else(|payload| crashed_result(file, payload.as_ref()));
+        send(ValidationEvent::Result { index, result });
+    }
+    send(ValidationEvent::Finished { total });
+}
+
+fn crashed_result(file: &Path, payload: &(dyn std::any::Any + Send)) -> ValidationResult {
+    let reason = payload
+        .downcast_ref::<&str>()
+        .map(|s| (*s).to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "unknown error".into());
+    ValidationResult {
+        file: file
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string(),
+        path: file.display().to_string(),
+        namespace: String::new(),
+        schema: String::new(),
+        status: Status::Error,
+        errors: 1,
+        warnings: 0,
+        messages: vec![Message {
+            severity: Severity::Error,
+            text: format!("Internal error while validating this file: {reason}"),
+            line: None,
+            column: None,
+        }],
+    }
 }
 
 /// Read a file's text for the code viewer (lossy UTF-8).
@@ -251,6 +296,50 @@ pub fn open_url(url: String) -> Result<(), String> {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    fn ok_result(p: &Path) -> ValidationResult {
+        ValidationResult::from_messages(
+            p.display().to_string(),
+            p.display().to_string(),
+            String::new(),
+            String::new(),
+            Vec::new(),
+        )
+    }
+
+    #[test]
+    fn a_panicking_file_does_not_stop_the_run() {
+        let files: Vec<PathBuf> = ["a.xml", "boom.xml", "c.xml"]
+            .iter()
+            .map(PathBuf::from)
+            .collect();
+        let mut events = Vec::new();
+        run_batch(
+            &files,
+            |p| {
+                if p.ends_with("boom.xml") {
+                    panic!("simulated crash");
+                }
+                ok_result(p)
+            },
+            |ev| events.push(ev),
+        );
+
+        let results: Vec<&ValidationResult> = events
+            .iter()
+            .filter_map(|e| match e {
+                ValidationEvent::Result { result, .. } => Some(result),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[1].status, crate::model::Status::Error);
+        assert_eq!(results[2].status, crate::model::Status::Ok);
+        assert!(matches!(
+            events.last(),
+            Some(ValidationEvent::Finished { total: 3 })
+        ));
+    }
 
     fn fresh_dir(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(name);

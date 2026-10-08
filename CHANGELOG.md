@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Files that are not well-formed XML are no longer reported OK.** Truncated files, a bare `&`, control characters, a second root element or text after `</Document>` now fail with a located error. Before, libxml's recovery mode silently repaired them.
+- **Pretty-printing no longer changes the verdict.** Leading or trailing spaces in values (e.g. ` DE89…` in `<IBAN>`, `COBADEFFXXX ` in `<BIC>`) and empty fields like `<Nm></Nm>` are now validated exactly as they appear in the file. Before, they were trimmed or padded and passed.
+- **A single bad file no longer stops the run.** DOCTYPE declarations are rejected, undefined entities are reported, and an internal error marks just that file as an error. The run always finishes; before, the UI could hang at "Validating…".
+- Error line numbers above 65,535 are reported correctly (they were capped at 65535).
+- Parse errors now show their line and column.
+
 ## [2.2.0] - 2026-09-19
 
 ### Added
