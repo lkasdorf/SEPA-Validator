@@ -134,6 +134,7 @@ impl Validator {
                     text: "File not found.".into(),
                     line: None,
                     column: None,
+                    hint: None,
                 }],
                 Status::Error,
                 1,
@@ -152,6 +153,7 @@ impl Validator {
                         text: "No XML namespace detected. File may not be valid XML.".into(),
                         line: None,
                         column: None,
+                        hint: None,
                     }],
                     Status::Error,
                     1,
@@ -172,6 +174,7 @@ impl Validator {
                         text: format!("No matching schema for namespace: {ns}"),
                         line: None,
                         column: None,
+                        hint: None,
                     }],
                     Status::NoSchema,
                     0,
@@ -189,6 +192,7 @@ impl Validator {
                     text: format!("Schema '{schema_name}' not imported. Open Schemas… to import it."),
                     line: None,
                     column: None,
+                    hint: None,
                 }],
                 Status::NoSchema,
                 0,
@@ -210,6 +214,7 @@ impl Validator {
                             text,
                             line: None,
                             column: None,
+                            hint: None,
                         }],
                         Status::Error,
                         1,
@@ -233,6 +238,7 @@ impl Validator {
                         text: e.message,
                         line: e.line,
                         column: e.column,
+                        hint: None,
                     }],
                     Status::Error,
                     1,
@@ -265,6 +271,7 @@ impl Validator {
                 text: format!("Schema validation failed (libxml2 code {rc})."),
                 line: None,
                 column: None,
+                hint: None,
             });
         }
 
@@ -289,6 +296,7 @@ fn parse_strict(text: &str) -> Result<Document, Message> {
         text,
         line: None,
         column: None,
+        hint: None,
     };
     let len = i32::try_from(text.len())
         .map_err(|_| fail("File too large to validate (over 2 GB).".into()))?;
@@ -334,12 +342,9 @@ fn to_message(e: &libxml::error::StructuredError) -> Message {
         XmlErrorLevel::Warning => Severity::Warning,
         _ => Severity::Error,
     };
-    let text = e
-        .message
-        .clone()
-        .unwrap_or_else(|| "validation error".into())
-        .trim()
-        .to_string();
+    let raw = e.message.as_deref().unwrap_or("validation error").trim();
+    let text = crate::messages::strip_namespaces(raw);
+    let hint = crate::messages::hint_for(&text);
     let line = e.line.filter(|l| *l > 0).map(|l| l as u32);
     let column = e.col.filter(|c| *c > 0).map(|c| c as u32);
     Message {
@@ -347,6 +352,7 @@ fn to_message(e: &libxml::error::StructuredError) -> Message {
         text,
         line,
         column,
+        hint,
     }
 }
 

@@ -1,5 +1,6 @@
 mod commands;
 mod formatting;
+mod messages;
 mod model;
 mod payments;
 mod scanner;

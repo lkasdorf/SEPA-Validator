@@ -177,3 +177,18 @@ fn error_line_beyond_65535_is_reported_exactly() {
         r.messages
     );
 }
+
+#[test]
+fn schema_errors_are_readable_and_carry_a_hint() {
+    let r = validate(
+        "readable",
+        &doc(&tx("Muster GmbH", " DE89370400440532013000", "COBADEFFXXX")),
+    );
+    let m = &r.messages[0];
+    assert!(!m.text.contains("{urn:"), "namespace left in: {}", m.text);
+    assert!(m.text.starts_with("Element 'IBAN'"), "got: {}", m.text);
+    assert_eq!(
+        m.hint.as_deref(),
+        Some("The value has leading or trailing spaces; remove them.")
+    );
+}

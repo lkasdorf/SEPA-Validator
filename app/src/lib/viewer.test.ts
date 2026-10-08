@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { errorLinesOf, formattedCopyPath } from "./viewer";
 import type { Message } from "./types";
 
-const msg = (line: number | null): Message => ({ severity: "error", text: "x", line, column: null });
+const msg = (line: number | null): Message => ({ severity: "error", text: "x", line, column: null, hint: null });
 
 describe("errorLinesOf", () => {
   it("returns located lines sorted and without duplicates (CodeMirror needs sorted ranges)", () => {

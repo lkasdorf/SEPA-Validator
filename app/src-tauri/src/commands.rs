@@ -149,6 +149,7 @@ fn crashed_result(file: &Path, payload: &(dyn std::any::Any + Send)) -> Validati
             text: format!("Internal error while validating this file: {reason}"),
             line: None,
             column: None,
+            hint: None,
         }],
     }
 }

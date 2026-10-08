@@ -32,6 +32,10 @@ export const foldAllInViewer = writable<() => void>(() => {});
 export const unfoldAllInViewer = writable<() => void>(() => {});
 
 export const schemaDialogOpen = writable<boolean>(false);
+/** Imported vs. known XSD schemas (refreshed whenever the Schemas dialog closes). */
+export const schemaCounts = writable<{ present: number; total: number }>({ present: 0, total: 0 });
+/** True while files are dragged over the window. */
+export const dragging = writable<boolean>(false);
 export const viewerLarge = writable<boolean>(false);
 
 export type AboutTab = "about" | "shortcuts" | "licenses" | "privacy";
