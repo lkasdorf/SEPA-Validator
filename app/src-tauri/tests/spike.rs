@@ -18,6 +18,17 @@ fn repo_root() -> PathBuf {
         .join("..")
 }
 
+/// The spike runs against private local data (the gitignored `xml_schema/` and
+/// `to_check/`). On a clean checkout such as CI it is skipped; the committed
+/// mini-schema tests in `src/validator/strict_tests.rs` cover libxml there.
+fn private_fixtures_present(paths: &[&PathBuf]) -> bool {
+    let missing: Vec<_> = paths.iter().filter(|p| !p.exists()).collect();
+    if !missing.is_empty() {
+        eprintln!("SKIP: private fixture(s) absent: {missing:?}");
+    }
+    missing.is_empty()
+}
+
 #[test]
 fn valid_file_passes_schema() {
     let xsd = repo_root().join("xml_schema/pain.008.001.02.xsd");
@@ -25,8 +36,9 @@ fn valid_file_passes_schema() {
         "to_check/valid/20250410_ENRW_ENERGIEVERSORGUNG_ROTTWEIL_GMBH_CO_KG_PAIN00800102.xml",
     );
 
-    assert!(xsd.exists(), "missing xsd fixture: {}", xsd.display());
-    assert!(valid.exists(), "missing valid fixture: {}", valid.display());
+    if !private_fixtures_present(&[&xsd, &valid]) {
+        return;
+    }
 
     let mut sp = SchemaParserContext::from_file(xsd.to_str().unwrap());
     let mut validator = SchemaValidationContext::from_parser(&mut sp)
@@ -52,12 +64,9 @@ fn invalid_file_reports_located_errors() {
     let xsd = repo_root().join("xml_schema/pain.001.001.09.xsd");
     let invalid = repo_root().join("to_check/invalid/20250121_NOFIRMA_PAIN00100109_1.xml");
 
-    assert!(xsd.exists(), "missing xsd fixture: {}", xsd.display());
-    assert!(
-        invalid.exists(),
-        "missing invalid fixture: {}",
-        invalid.display()
-    );
+    if !private_fixtures_present(&[&xsd, &invalid]) {
+        return;
+    }
 
     let mut sp = SchemaParserContext::from_file(xsd.to_str().unwrap());
     let mut validator = SchemaValidationContext::from_parser(&mut sp).expect("schema must compile");
