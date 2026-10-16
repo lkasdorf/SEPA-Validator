@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Transactions tab.** One row per transaction with name, IBAN, amount and remittance info of the counterparty (`Cdtr`/`CdtrAcct` for credit transfers, `Dbtr`/`DbtrAcct` for direct debits); direct debits also show the mandate ID and signature date (`MndtRltdInf`). Only the visible rows are rendered, so files with tens of thousands of transactions stay responsive. **Export CSV** writes the table for Excel (`;`-separated, decimal comma, UTF-8 with BOM). A search field filters by name, IBAN, remittance info and mandate ID (case-insensitive, every word must match, Esc clears); the export then contains only the matching rows, with their original numbers. The toolbar shows the exact sum of the amounts per currency, for the matching rows and for the whole file. Click a column header to sort (ascending, descending, back to file order); the export follows the shown order.
+
 ## [2.4.0] - 2026-10-16
 
 ### Added

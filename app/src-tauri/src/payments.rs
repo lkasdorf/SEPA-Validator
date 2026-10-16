@@ -53,12 +53,22 @@ pub struct PmtInfSummary {
     pub reqd_date: Option<String>,
 }
 
+/// One transaction. `name`/`iban` are the counterparty: Cdtr/CdtrAcct for a
+/// credit transfer (pain.001), Dbtr/DbtrAcct for a direct debit (pain.008).
+/// `mandate_id`/`signature_date` (MndtRltdInf) only exist for direct debits.
 #[derive(Debug, Clone, PartialEq, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RemittanceEntry {
     pub instr_id: Option<String>,
     pub end_to_end_id: Option<String>,
     pub ustrd: Option<String>,
+    pub name: Option<String>,
+    pub iban: Option<String>,
+    /// InstdAmt verbatim (e.g. "123.45") and its Ccy attribute.
+    pub amount: Option<String>,
+    pub currency: Option<String>,
+    pub mandate_id: Option<String>,
+    pub signature_date: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -84,9 +94,17 @@ fn local_of(name: &[u8]) -> String {
 /// Per-transaction accumulation while parsing (not serialized).
 #[derive(Default)]
 struct TxAccum {
+    /// True for DrctDbtTxInf: the counterparty is Dbtr, not Cdtr.
+    direct_debit: bool,
     ustrd: Vec<String>,
     instr_id: Option<String>,
     end_to_end_id: Option<String>,
+    name: Option<String>,
+    iban: Option<String>,
+    amount: Option<String>,
+    currency: Option<String>,
+    mandate_id: Option<String>,
+    signature_date: Option<String>,
 }
 
 pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
@@ -122,7 +140,21 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
                         current_creditor = Creditor::default();
                         current_debtor = Debtor::default();
                     }
-                    "CdtTrfTxInf" | "DrctDbtTxInf" => current_tx = Some(TxAccum::default()),
+                    "CdtTrfTxInf" | "DrctDbtTxInf" => {
+                        current_tx = Some(TxAccum {
+                            direct_debit: name == "DrctDbtTxInf",
+                            ..TxAccum::default()
+                        })
+                    }
+                    "InstdAmt" => {
+                        if let Some(tx) = current_tx.as_mut() {
+                            if let Ok(Some(a)) = e.try_get_attribute("Ccy") {
+                                if let Ok(v) = a.unescape_value() {
+                                    tx.currency.get_or_insert(v.into_owned());
+                                }
+                            }
+                        }
+                    }
                     _ => {}
                 }
                 stack.push(name);
@@ -152,6 +184,12 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
                                 instr_id: tx.instr_id,
                                 end_to_end_id: tx.end_to_end_id,
                                 ustrd,
+                                name: tx.name,
+                                iban: tx.iban,
+                                amount: tx.amount,
+                                currency: tx.currency,
+                                mandate_id: tx.mandate_id,
+                                signature_date: tx.signature_date,
                             });
                         }
                     }
@@ -168,6 +206,14 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
                 let grand = stack.iter().rev().nth(2).map(String::as_str).unwrap_or("");
                 let text = t.unescape().map_err(|e| e.to_string())?.into_owned();
                 let b = current.as_mut().unwrap();
+                // Counterparty elements of the open transaction: (party, account).
+                let tx_party = current_tx.as_ref().map(|t| {
+                    if t.direct_debit {
+                        ("Dbtr", "DbtrAcct")
+                    } else {
+                        ("Cdtr", "CdtrAcct")
+                    }
+                });
                 match top {
                     "NbOfTxs" if parent == "PmtInf" => {
                         b.nb_of_txs.get_or_insert(text);
@@ -236,6 +282,31 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
                             }
                         }
                     }
+                    "Nm" if tx_party.is_some_and(|(p, _)| parent == p) => {
+                        if let Some(tx) = current_tx.as_mut() {
+                            tx.name.get_or_insert(text);
+                        }
+                    }
+                    "IBAN" if parent == "Id" && tx_party.is_some_and(|(_, a)| grand == a) => {
+                        if let Some(tx) = current_tx.as_mut() {
+                            tx.iban.get_or_insert(text);
+                        }
+                    }
+                    "InstdAmt" => {
+                        if let Some(tx) = current_tx.as_mut() {
+                            tx.amount.get_or_insert(text);
+                        }
+                    }
+                    "MndtId" if parent == "MndtRltdInf" => {
+                        if let Some(tx) = current_tx.as_mut() {
+                            tx.mandate_id.get_or_insert(text);
+                        }
+                    }
+                    "DtOfSgntr" if parent == "MndtRltdInf" => {
+                        if let Some(tx) = current_tx.as_mut() {
+                            tx.signature_date.get_or_insert(text);
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -280,7 +351,7 @@ mod tests {
       <Dbtr><Nm>Payer AG</Nm></Dbtr>
       <DbtrAcct><Id><IBAN>DE02120300000000202051</IBAN></Id></DbtrAcct>
       <DbtrAgt><FinInstnId><BIC>BYLADEM1001</BIC></FinInstnId></DbtrAgt>
-      <CdtTrfTxInf><PmtId><InstrId>INSTR-1</InstrId><EndToEndId>E2E-1</EndToEndId></PmtId><Cdtr><Nm>Payee One</Nm></Cdtr><RmtInf><Ustrd>Invoice 1</Ustrd></RmtInf></CdtTrfTxInf>
+      <CdtTrfTxInf><PmtId><InstrId>INSTR-1</InstrId><EndToEndId>E2E-1</EndToEndId></PmtId><Amt><InstdAmt Ccy="EUR">100.50</InstdAmt></Amt><CdtrAgt><FinInstnId><BIC>COBADEFFXXX</BIC></FinInstnId></CdtrAgt><Cdtr><Nm>Payee One</Nm></Cdtr><CdtrAcct><Id><IBAN>DE89370400440532013000</IBAN></Id></CdtrAcct><UltmtCdtr><Nm>Ultimate Payee</Nm></UltmtCdtr><RmtInf><Ustrd>Invoice 1</Ustrd></RmtInf></CdtTrfTxInf>
       <CdtTrfTxInf><PmtId><EndToEndId>E2E-2</EndToEndId></PmtId><Cdtr><Nm>Payee Two</Nm></Cdtr><RmtInf><Ustrd>Invoice 2</Ustrd></RmtInf></CdtTrfTxInf>
     </PmtInf>
     <PmtInf>
@@ -327,6 +398,16 @@ mod tests {
         assert_eq!(s.transactions[1].end_to_end_id.as_deref(), Some("E2E-2"));
         assert_eq!(s.transactions[2].instr_id, None);
         assert_eq!(s.transactions[2].end_to_end_id, None);
+        // Counterparty is the per-tx Cdtr (not UltmtCdtr), plus amount and currency.
+        let t = &s.transactions[0];
+        assert_eq!(t.name.as_deref(), Some("Payee One"));
+        assert_eq!(t.iban.as_deref(), Some("DE89370400440532013000"));
+        assert_eq!(t.amount.as_deref(), Some("100.50"));
+        assert_eq!(t.currency.as_deref(), Some("EUR"));
+        assert_eq!(t.mandate_id, None);
+        assert_eq!(s.transactions[1].name.as_deref(), Some("Payee Two"));
+        assert_eq!(s.transactions[1].iban, None);
+        assert_eq!(s.transactions[1].amount, None);
     }
 
     const PAIN008: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -346,7 +427,7 @@ mod tests {
       <CdtrAcct><Id><IBAN>DE89370400440532013000</IBAN></Id></CdtrAcct>
       <CdtrAgt><FinInstnId><BIC>COBADEFFXXX</BIC></FinInstnId></CdtrAgt>
       <CdtrSchmeId><Id><PrvtId><Othr><Id>DE98ZZZ09999999999</Id></Othr></PrvtId></Id></CdtrSchmeId>
-      <DrctDbtTxInf><Dbtr><Nm>Member One</Nm></Dbtr><DbtrAcct><Id><IBAN>DE02120300000000202051</IBAN></Id></DbtrAcct><RmtInf><Ustrd>Beitrag Mai</Ustrd></RmtInf></DrctDbtTxInf>
+      <DrctDbtTxInf><PmtId><EndToEndId>E2E-D1</EndToEndId></PmtId><InstdAmt Ccy="EUR">49.90</InstdAmt><DrctDbtTx><MndtRltdInf><MndtId>MANDATE-001</MndtId><DtOfSgntr>2024-03-15</DtOfSgntr><AmdmntInfDtls><OrgnlMndtId>OLD-1</OrgnlMndtId></AmdmntInfDtls></MndtRltdInf></DrctDbtTx><Dbtr><Nm>Member One</Nm></Dbtr><DbtrAcct><Id><IBAN>DE02120300000000202051</IBAN></Id></DbtrAcct><RmtInf><Ustrd>Beitrag Mai</Ustrd></RmtInf></DrctDbtTxInf>
       <DrctDbtTxInf><RmtInf><Ustrd></Ustrd></RmtInf></DrctDbtTxInf>
       <DrctDbtTxInf></DrctDbtTxInf>
     </PmtInf>
@@ -372,6 +453,16 @@ mod tests {
         assert_eq!(s.debtor, None);
         assert_eq!(s.transactions.len(), 3);
         assert_eq!(s.transactions[0].ustrd.as_deref(), Some("Beitrag Mai"));
+        // Counterparty is the per-tx Dbtr; mandate data from MndtRltdInf (not OrgnlMndtId).
+        let t = &s.transactions[0];
+        assert_eq!(t.name.as_deref(), Some("Member One"));
+        assert_eq!(t.iban.as_deref(), Some("DE02120300000000202051"));
+        assert_eq!(t.amount.as_deref(), Some("49.90"));
+        assert_eq!(t.currency.as_deref(), Some("EUR"));
+        assert_eq!(t.mandate_id.as_deref(), Some("MANDATE-001"));
+        assert_eq!(t.signature_date.as_deref(), Some("2024-03-15"));
+        assert_eq!(s.transactions[1].name, None);
+        assert_eq!(s.transactions[1].mandate_id, None);
         assert_eq!(s.transactions[1].ustrd, None); // empty <Ustrd></Ustrd>
         assert_eq!(s.transactions[2].ustrd, None); // no RmtInf/Ustrd
     }
