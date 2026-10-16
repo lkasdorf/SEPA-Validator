@@ -7,6 +7,7 @@
   import { filterIndices, searchIndex } from "./transactionFilter";
   import { sortIndices, type SortDir, type SortKey } from "./transactionSort";
   import { formatSums, sumAmounts } from "./amounts";
+  import IbanCheckButton from "./IbanCheckButton.svelte";
 
   // Rows have a fixed height and only the visible window (plus overscan) is
   // rendered, so files with tens of thousands of transactions stay responsive.
@@ -149,7 +150,7 @@
             <tr style="height: {ROW}px">
               <td>{i + 1}</td>
               <td title={t.name ?? ""}>{t.name ?? "—"}</td>
-              <td class="mono">{t.iban ?? "—"}</td>
+              <td class="mono">{t.iban ?? "—"}<IbanCheckButton iban={t.iban} /></td>
               <td class="mono num">{t.amount != null ? `${t.amount} ${t.currency ?? ""}` : "—"}</td>
               <td title={rmt ?? ""} class:missing={rmt == null}>{rmt ?? "—"}</td>
               {#if dd}
