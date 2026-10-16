@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **XML viewer broke after switching files while another tab was open.** If a very large file (roughly 350,000 or more formatted lines) was loaded while Overview or Remittance was showing, the next file switch threw an error in the viewer and it stayed broken until restart. The viewer now starts fresh for every file.
+
 ## [2.4.0] - 2026-10-16
 
 ### Added

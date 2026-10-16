@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { EditorState, StateEffect, StateField, RangeSetBuilder, Compartment } from "@codemirror/state";
+  import { EditorState, StateEffect, StateField, RangeSetBuilder, type Extension } from "@codemirror/state";
   import { EditorView, lineNumbers, keymap, Decoration, type DecorationSet } from "@codemirror/view";
   import { xml } from "@codemirror/lang-xml";
   import { oneDark } from "@codemirror/theme-one-dark";
@@ -20,7 +20,6 @@
   const latest = createLatest();
 
   const HEAVY_LIMIT = 10 * 1024 * 1024;
-  const heavyComp = new Compartment();
   const HEAVY = [xml(), foldGutter(), codeFolding(), highlightSelectionMatches()];
 
   // Decoration to highlight error lines.
@@ -68,31 +67,33 @@
     provide: (f) => EditorView.decorations.from(f),
   });
 
+  const BASE: Extension[] = [lineNumbers(), oneDark,
+    search({ top: true }),
+    keymap.of([...searchKeymap, ...foldKeymap]),
+    errorField, activeLineField,
+    EditorView.editable.of(false),
+    EditorState.readOnly.of(true),
+    EditorView.theme({
+      ".cm-error-line": { backgroundColor: "rgba(244,71,71,0.18)" },
+      ".cm-active-error-line": {
+        backgroundColor: "rgba(244,71,71,0.38)",
+        boxShadow: "inset 3px 0 0 #f44747",
+        animation: "cm-flash 0.6s ease-out",
+      },
+      "@keyframes cm-flash": {
+        from: { backgroundColor: "rgba(244,71,71,0.75)" },
+        to: { backgroundColor: "rgba(244,71,71,0.38)" },
+      },
+    })];
+
+  /** A fresh state per file. Large files skip highlighting and folding. */
+  function stateFor(text: string): EditorState {
+    const large = text.length > HEAVY_LIMIT;
+    return EditorState.create({ doc: text, extensions: large ? BASE : [...BASE, ...HEAVY] });
+  }
+
   onMount(() => {
-    view = new EditorView({
-      parent: host,
-      state: EditorState.create({
-        doc: "",
-        extensions: [lineNumbers(), heavyComp.of(HEAVY), oneDark,
-          search({ top: true }),
-          keymap.of([...searchKeymap, ...foldKeymap]),
-          errorField, activeLineField,
-          EditorView.editable.of(false),
-          EditorState.readOnly.of(true),
-          EditorView.theme({
-            ".cm-error-line": { backgroundColor: "rgba(244,71,71,0.18)" },
-            ".cm-active-error-line": {
-              backgroundColor: "rgba(244,71,71,0.38)",
-              boxShadow: "inset 3px 0 0 #f44747",
-              animation: "cm-flash 0.6s ease-out",
-            },
-            "@keyframes cm-flash": {
-              from: { backgroundColor: "rgba(244,71,71,0.75)" },
-              to: { backgroundColor: "rgba(244,71,71,0.38)" },
-            },
-          })],
-      }),
-    });
+    view = new EditorView({ parent: host, state: stateFor("") });
     jumpToLine.set(jumpTo);
     openViewerSearch.set(() => { if (view) openSearchPanel(view); });
     foldAllInViewer.set(() => { if (view) foldAll(view); });
@@ -103,14 +104,15 @@
   // Load file content when the selection (or the validation run) changes.
   $: void loadFor($selectedResult?.path, $runId, errorLinesOf($selectedResult?.messages ?? []));
 
+  // Replace the whole state rather than dispatching a document change: while
+  // the viewer is hidden (another tab is open), CodeMirror cannot measure, and
+  // after a file tall enough for its height scaling (~7M px) replacing the text
+  // again throws in the scroll-anchor lookup and leaves the view broken. A new
+  // state also resets folds, search and decorations, which belong to the old file.
   function show(text: string, key: string) {
     if (!view) return;
-    const large = text.length > HEAVY_LIMIT;
-    view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: text },
-      effects: heavyComp.reconfigure(large ? [] : HEAVY),
-    });
-    viewerLarge.set(large);
+    view.setState(stateFor(text));
+    viewerLarge.set(text.length > HEAVY_LIMIT);
     shownKey = key;
     decoratedFor = "";
   }
