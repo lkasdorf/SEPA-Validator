@@ -1,6 +1,7 @@
 <script lang="ts">
   import { selectedResult } from "./stores";
   import { paymentSummary } from "./paymentSummary";
+  import IbanCheckButton from "./IbanCheckButton.svelte";
   $: ps = $paymentSummary;
 </script>
 
@@ -17,7 +18,7 @@
       <h3>Creditor (Cdtr)</h3>
       <dl class="cdtr">
         <dt>Name</dt><dd>{data.creditor.name ?? "—"}</dd>
-        <dt>IBAN</dt><dd class="mono">{data.creditor.iban ?? "—"}</dd>
+        <dt>IBAN</dt><dd class="mono">{data.creditor.iban ?? "—"}<IbanCheckButton iban={data.creditor.iban} /></dd>
         <dt>BIC</dt><dd class="mono">{data.creditor.bic ?? "—"}</dd>
         <dt>Creditor ID</dt><dd class="mono">{data.creditor.creditorId ?? "—"}</dd>
       </dl>
@@ -26,7 +27,7 @@
       <h3>Debtor (Dbtr)</h3>
       <dl class="cdtr">
         <dt>Name</dt><dd>{data.debtor.name ?? "—"}</dd>
-        <dt>IBAN</dt><dd class="mono">{data.debtor.iban ?? "—"}</dd>
+        <dt>IBAN</dt><dd class="mono">{data.debtor.iban ?? "—"}<IbanCheckButton iban={data.debtor.iban} /></dd>
         <dt>BIC</dt><dd class="mono">{data.debtor.bic ?? "—"}</dd>
       </dl>
     {/if}

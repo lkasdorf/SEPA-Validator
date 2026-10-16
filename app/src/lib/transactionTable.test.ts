@@ -80,3 +80,18 @@ describe("sortIndices", () => {
     expect(filterIndices(searchIndex(r), "beitrag", sortIndices(r, "name", "asc"))).toEqual([2, 0]);
   });
 });
+
+describe("ibanCheckUrl", () => {
+  it("builds the check link from a normalized IBAN", async () => {
+    const { ibanCheckUrl } = await import("./iban");
+    expect(ibanCheckUrl("DE89370400440532013000")).toBe("https://www.ibancalculator.com/validate/DE89370400440532013000");
+    expect(ibanCheckUrl(" de89 3704 0044 0532 0130 00 ")).toBe("https://www.ibancalculator.com/validate/DE89370400440532013000");
+  });
+
+  it("refuses anything that is not shaped like an IBAN", async () => {
+    const { ibanCheckUrl } = await import("./iban");
+    for (const v of [null, undefined, "", "DE", "DE8937/../../x", "DE89?x=1", "12DE3704", "DE89370400440532013000#frag"]) {
+      expect(ibanCheckUrl(v)).toBeNull();
+    }
+  });
+});

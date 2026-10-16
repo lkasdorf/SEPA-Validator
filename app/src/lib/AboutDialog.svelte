@@ -101,8 +101,9 @@
         <p class="note">The ISO 20022 / DK / GBIC <strong>XSD schemas are not bundled</strong> and are not covered by this license. They remain the property of their respective owners (e.g. ebics.de, iso20022.org) under their own terms — all rights reserved.</p>
 
       {:else}
-        <p>All validation happens entirely on your machine. SEPA Validator does not upload, transmit, or otherwise send your XML files or their contents anywhere.</p>
+        <p>All validation happens entirely on your machine. SEPA Validator does not upload, transmit, or otherwise send your XML files or their contents anywhere, except a single IBAN when you click its online check (below).</p>
         <p>The only network actions are ones you trigger yourself: opening external links (GitHub, ebics.de, iso20022.org) in your browser, and — when you use <em>Check for Updates</em> — asking GitHub for the latest released version.</p>
+        <p>The <strong>↗</strong> button next to an IBAN opens ibancalculator.com in your browser with that IBAN in the address, so that single IBAN is sent to that site. Nothing else from the file is sent.</p>
       {/if}
     </div>
 
