@@ -442,8 +442,13 @@ pub fn open_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Hosts the app links to (repo, schema download pages).
-const ALLOWED_URL_HOSTS: &[&str] = &["github.com", "www.ebics.de", "www.six-group.com"];
+/// Hosts the app links to (repo, schema download pages, online IBAN check).
+const ALLOWED_URL_HOSTS: &[&str] = &[
+    "github.com",
+    "www.ebics.de",
+    "www.six-group.com",
+    "www.ibancalculator.com",
+];
 
 /// Only `https://` links to `ALLOWED_URL_HOSTS`, with no credentials or custom
 /// port. Everything else (local or UNC paths, `file:`, protocol handlers such as
@@ -666,6 +671,7 @@ mod tests {
             "https://github.com/lkasdorf/SEPA-Validator/issues/new",
             "https://www.ebics.de/de/datenformate",
             "https://www.six-group.com/en/products-services/banking-services/payment-standardization/standards/iso-20022.html",
+            "https://www.ibancalculator.com/validate/DE89370400440532013000",
         ] {
             assert!(check_url(u).is_ok(), "{u}");
         }
@@ -677,6 +683,7 @@ mod tests {
             "http://github.com/",
             "https://evil.example/",
             "https://github.com.evil.example/",
+            "https://ibancalculator.com/validate/DE89370400440532013000",
             "https://user@github.com/",
             "https://github.com:8443/",
             "file:///C:/Windows/System32/calc.exe",
