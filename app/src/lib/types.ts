@@ -63,10 +63,24 @@ export interface PmtInfSummary {
   reqdDate: string | null;
 }
 
+/** One transaction. `name`/`iban` are the counterparty: Cdtr for pain.001,
+ *  Dbtr for pain.008. Mandate fields only exist for direct debits. */
 export interface RemittanceEntry {
   instrId: string | null;
   endToEndId: string | null;
   ustrd: string | null;
+  name: string | null;
+  iban: string | null;
+  /** InstdAmt verbatim, e.g. "123.45". */
+  amount: string | null;
+  currency: string | null;
+  mandateId: string | null;
+  signatureDate: string | null;
+}
+
+/** pain.008 (or any file whose transactions carry a mandate). */
+export function isDirectDebit(s: PaymentSummary): boolean {
+  return s.messageType.startsWith("pain.008") || s.transactions.some((t) => t.mandateId != null);
 }
 
 export interface PaymentSummary {

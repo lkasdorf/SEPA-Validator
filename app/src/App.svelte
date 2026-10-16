@@ -4,6 +4,7 @@
   import CodeViewer from "./lib/CodeViewer.svelte";
   import SummaryView from "./lib/SummaryView.svelte";
   import RemittanceView from "./lib/RemittanceView.svelte";
+  import TransactionsView from "./lib/TransactionsView.svelte";
   import LogPanel from "./lib/LogPanel.svelte";
   import SummaryBar from "./lib/SummaryBar.svelte";
   import SchemaDialog from "./lib/SchemaDialog.svelte";
@@ -14,7 +15,7 @@
   import { results, progress, dragging, selectedResult, runId, openViewerSearch, foldAllInViewer, unfoldAllInViewer, schemaDialogOpen, viewerLarge, aboutDialogOpen, updateDialogOpen } from "./lib/stores";
   import { loadPaymentSummary } from "./lib/paymentSummary";
 
-  let viewerTab: "xml" | "summary" | "remittance" = "xml";
+  let viewerTab: "xml" | "summary" | "remittance" | "transactions" = "xml";
   $: empty = $results.length === 0 && !$progress.running;
   $: if (viewerTab !== "xml") loadPaymentSummary($selectedResult?.path, $runId);
 
@@ -60,6 +61,7 @@
           <button class:active={viewerTab === "xml"} on:click={() => (viewerTab = "xml")}>XML</button>
           <button class:active={viewerTab === "summary"} on:click={() => (viewerTab = "summary")}>Overview</button>
           <button class:active={viewerTab === "remittance"} on:click={() => (viewerTab = "remittance")}>Remittance</button>
+          <button class:active={viewerTab === "transactions"} on:click={() => (viewerTab = "transactions")}>Transactions</button>
         </div>
         {#if viewerTab === "xml"}
           <button class="btn btn--ghost" on:click={() => $openViewerSearch()} disabled={!$selectedResult}>Search</button>
@@ -76,6 +78,7 @@
       <div class="viewer-pane" class:hidden={viewerTab !== "xml" || empty}><CodeViewer /></div>
       {#if viewerTab === "summary" && !empty}<SummaryView />{/if}
       {#if viewerTab === "remittance" && !empty}<RemittanceView />{/if}
+      {#if viewerTab === "transactions" && !empty}<TransactionsView />{/if}
     </section>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div class="gutter" role="separator" aria-orientation="vertical" on:mousedown={(e) => startDrag("right", e)}></div>

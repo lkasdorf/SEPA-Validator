@@ -2,6 +2,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "./api";
 import type { ValidationResult, RemittanceEntry } from "./types";
 import { statusLabel } from "./types";
+import { transactionsCsv } from "./transactionsCsv";
 
 function stamp(): string {
   const d = new Date();
@@ -55,4 +56,19 @@ export async function exportRemittanceCsv(
     out += [i + 1, esc(origin), esc(remittance)].join(";") + "\n";
   });
   await writeTextFile(path, out);
+}
+
+export async function exportTransactionsCsv(
+  transactions: RemittanceEntry[],
+  directDebit: boolean,
+  sourceFile: string,
+  numbers?: number[]
+): Promise<void> {
+  const base = sourceFile.replace(/\.[^.]+$/, "") || "file";
+  const path = await save({
+    defaultPath: `Transactions_${base}_${stamp()}.csv`,
+    filters: [{ name: "CSV", extensions: ["csv"] }],
+  });
+  if (!path) return;
+  await writeTextFile(path, transactionsCsv(transactions, directDebit, numbers));
 }
