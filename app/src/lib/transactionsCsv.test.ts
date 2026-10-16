@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { transactionsCsv } from "./transactionsCsv";
 import { visibleRange } from "./virtualRows";
+import { filterIndices, searchIndex } from "./transactionFilter";
 import { isDirectDebit, type PaymentSummary, type RemittanceEntry } from "./types";
 
 const tx = (o: Partial<RemittanceEntry>): RemittanceEntry => ({
@@ -47,5 +48,40 @@ describe("visibleRange", () => {
     expect(visibleRange(1_299_740, 260, 26, 50_000, 5)).toEqual({ start: 49_985, end: 50_000 });
     expect(visibleRange(0, 600, 26, 3)).toEqual({ start: 0, end: 3 });
     expect(visibleRange(0, 600, 26, 0)).toEqual({ start: 0, end: 0 });
+  });
+});
+
+describe("transaction search", () => {
+  const rows = [
+    tx({ name: "Anna Müller", iban: "DE89370400440532013000", ustrd: "Beitrag Mai", mandateId: "MND-001" }),
+    tx({ name: "Bernd Schmidt", iban: "DE02120300000000202051", ustrd: "Beitrag Juni\nNachzahlung", mandateId: "MND-002" }),
+    tx({ name: null, iban: null, ustrd: null, mandateId: null, amount: "10.00" }),
+  ];
+  const idx = searchIndex(rows);
+
+  it("empty query matches everything", () => {
+    expect(filterIndices(idx, "")).toEqual([0, 1, 2]);
+    expect(filterIndices(idx, "   ")).toEqual([0, 1, 2]);
+  });
+
+  it("matches name, IBAN, remittance info and mandate ID case-insensitively", () => {
+    expect(filterIndices(idx, "MÜLLER")).toEqual([0]);
+    expect(filterIndices(idx, "de0212")).toEqual([1]);
+    expect(filterIndices(idx, "nachzahlung")).toEqual([1]);
+    expect(filterIndices(idx, "mnd-00")).toEqual([0, 1]);
+  });
+
+  it("requires every term, across fields", () => {
+    expect(filterIndices(idx, "beitrag mai")).toEqual([0]);
+    expect(filterIndices(idx, "schmidt mnd-001")).toEqual([]);
+  });
+
+  it("does not search the amount", () => {
+    expect(filterIndices(idx, "10.00")).toEqual([]);
+  });
+
+  it("CSV keeps the original transaction numbers of a filtered list", () => {
+    const csv = transactionsCsv([rows[1]], true, [2]);
+    expect(csv.slice(1).split("\n")[1].startsWith('2;"Bernd Schmidt"')).toBe(true);
   });
 });

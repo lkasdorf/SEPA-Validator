@@ -61,7 +61,8 @@ export async function exportRemittanceCsv(
 export async function exportTransactionsCsv(
   transactions: RemittanceEntry[],
   directDebit: boolean,
-  sourceFile: string
+  sourceFile: string,
+  numbers?: number[]
 ): Promise<void> {
   const base = sourceFile.replace(/\.[^.]+$/, "") || "file";
   const path = await save({
@@ -69,5 +70,5 @@ export async function exportTransactionsCsv(
     filters: [{ name: "CSV", extensions: ["csv"] }],
   });
   if (!path) return;
-  await writeTextFile(path, transactionsCsv(transactions, directDebit));
+  await writeTextFile(path, transactionsCsv(transactions, directDebit, numbers));
 }

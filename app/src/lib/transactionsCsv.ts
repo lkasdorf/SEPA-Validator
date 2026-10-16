@@ -4,14 +4,19 @@ const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
 
 /** CSV of the Transactions table for Excel in a German locale: `;`-separated,
  *  decimal comma in amounts, UTF-8 BOM so umlauts in names survive. Mandate
- *  columns only for direct debits. */
-export function transactionsCsv(transactions: RemittanceEntry[], directDebit: boolean): string {
+ *  columns only for direct debits. `numbers` are the `#` values (the position
+ *  in the file, which a filtered list keeps); default 1..n. */
+export function transactionsCsv(
+  transactions: RemittanceEntry[],
+  directDebit: boolean,
+  numbers?: number[]
+): string {
   const header = ["#", "Name", "IBAN", "Amount", "Currency", "Remittance info"];
   if (directDebit) header.push("Mandate ID", "Signature date");
   let out = "﻿" + header.join(";") + "\n";
   transactions.forEach((t, i) => {
     const cells: (string | number)[] = [
-      i + 1,
+      numbers?.[i] ?? i + 1,
       esc(t.name ?? ""),
       esc(t.iban ?? ""),
       esc((t.amount ?? "").replace(".", ",")),
