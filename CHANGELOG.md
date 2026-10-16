@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-16
+
+### Added
+- **Debtor in the Overview for credit transfers (pain.001).** The ordering party (`Dbtr`) of the first payment block is shown with name, IBAN and BIC (`BIC` or `BICFI`), like the creditor block for direct debits. Before, credit transfer files showed no party or bank at all.
+
 ## [2.3.0] - 2026-10-09
 
 ### Added
@@ -114,7 +119,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release: native Windows GUI SEPA XML Validator (PowerShell/WinForms) with full XSD validation, drag & drop, file/folder selection, batch validation, and TXT export.
 - Bash CLI scripts for validation, batch validation, and renaming XML files by date/company/schema.
 
-[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.0.0...v2.1.0
