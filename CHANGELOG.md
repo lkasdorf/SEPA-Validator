@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-10-16
+
 ### Added
 - **Transactions tab.** One row per transaction with name, IBAN, amount and remittance info of the counterparty (`Cdtr`/`CdtrAcct` for credit transfers, `Dbtr`/`DbtrAcct` for direct debits); direct debits also show the mandate ID and signature date (`MndtRltdInf`). Only the visible rows are rendered, so files with tens of thousands of transactions stay responsive. **Export CSV** writes the table for Excel (`;`-separated, decimal comma, UTF-8 with BOM). A search field filters by name, IBAN, remittance info and mandate ID (case-insensitive, every word must match, Esc clears); the export then contains only the matching rows, with their original numbers. The toolbar shows the exact sum of the amounts per currency, for the matching rows and for the whole file. Click a column header to sort (ascending, descending, back to file order); the export follows the shown order.
 - **Online IBAN check.** A **↗** button next to every IBAN (Transactions tab, creditor/debtor in the Overview) opens ibancalculator.com in the browser with that IBAN, showing validity, bank and BIC. Only that one IBAN leaves the computer, and only on click; the Privacy tab says so.
@@ -126,7 +128,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release: native Windows GUI SEPA XML Validator (PowerShell/WinForms) with full XSD validation, drag & drop, file/folder selection, batch validation, and TXT export.
 - Bash CLI scripts for validation, batch validation, and renaming XML files by date/company/schema.
 
-[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.4.0...HEAD
+[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.1.0...v2.2.0
