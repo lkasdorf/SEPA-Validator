@@ -9,13 +9,12 @@ export function searchIndex(transactions: RemittanceEntry[]): string[] {
 }
 
 /** Indices of the transactions matching every whitespace-separated term of
- *  `query` (case-insensitive substring), in document order. An empty query
- *  matches all. Terms can span fields, e.g. "müller mai". */
-export function filterIndices(index: string[], query: string): number[] {
+ *  `query` (case-insensitive substring), in the order of `candidates`
+ *  (default: document order). An empty query matches all. Terms can span
+ *  fields, e.g. "müller mai". */
+export function filterIndices(index: string[], query: string, candidates?: number[]): number[] {
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const out: number[] = [];
-  for (let i = 0; i < index.length; i++) {
-    if (terms.every((term) => index[i].includes(term))) out.push(i);
-  }
-  return out;
+  const order = candidates ?? index.map((_, i) => i);
+  if (!terms.length) return order;
+  return order.filter((i) => terms.every((term) => index[i].includes(term)));
 }

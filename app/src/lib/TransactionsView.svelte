@@ -5,6 +5,8 @@
   import { isDirectDebit } from "./types";
   import { visibleRange } from "./virtualRows";
   import { filterIndices, searchIndex } from "./transactionFilter";
+  import { sortIndices, type SortDir, type SortKey } from "./transactionSort";
+  import { formatSums, sumAmounts } from "./amounts";
 
   // Rows have a fixed height and only the visible window (plus overscan) is
   // rendered, so files with tens of thousands of transactions stay responsive.
@@ -15,12 +17,45 @@
   $: rows = ready ? ps.data!.transactions : [];
   $: dd = ready ? isDirectDebit(ps.data!) : false;
 
-  // Search: the index is built once per file, `order` holds the indices of
-  // the matching rows (all of them for an empty query).
+  // Sorting reorders all rows once per click; the search then keeps that
+  // order. `order` holds the indices of the rows to show.
+  let sortKey: SortKey = "index";
+  let sortDir: SortDir = "asc";
+  $: sorted = sortIndices(rows, sortKey, sortDir);
+
+  // Search: the index is built once per file.
   let query = "";
   $: index = searchIndex(rows);
-  $: order = filterIndices(index, query);
+  $: order = filterIndices(index, query, sorted);
   $: filtered = query.trim() !== "";
+
+  // Exact sums per currency: of the whole file and of what is shown.
+  $: total = sumAmounts(rows, rows.keys());
+  $: shown = filtered ? sumAmounts(rows, order) : total;
+
+  $: columns = [
+    { key: "index", label: "#" },
+    { key: "name", label: "Name" },
+    { key: "iban", label: "IBAN" },
+    { key: "amount", label: "Amount", num: true },
+    { key: "ustrd", label: "Remittance info" },
+    ...(dd
+      ? [
+          { key: "mandateId", label: "Mandate ID" },
+          { key: "signatureDate", label: "Signature date" },
+        ]
+      : []),
+  ] as { key: SortKey; label: string; num?: boolean }[];
+
+  /** Click cycles ascending → descending → file order. */
+  function sortBy(key: SortKey) {
+    if (key !== sortKey) [sortKey, sortDir] = [key, "asc"];
+    else if (sortDir === "asc") sortDir = "desc";
+    else [sortKey, sortDir] = ["index", "asc"];
+    toTop();
+  }
+
+  let toolbarHeight = 40;
 
   let scroller: HTMLDivElement | undefined;
   let scrollTop = 0;
@@ -49,7 +84,7 @@
   async function doExport() {
     if (!ready || !order.length) return; // still showing another file's data
     try {
-      // Exports what is shown: the filtered rows with their position in the file.
+      // Exports what is shown, in the shown order, with each row's position in the file.
       await exportTransactionsCsv(order.map((i) => rows[i]), dd, $selectedResult?.file ?? "file", order.map((i) => i + 1));
     } catch (e) {
       console.error("Transactions export failed:", e);
@@ -57,7 +92,7 @@
   }
 </script>
 
-<div class="summary" bind:this={scroller} bind:clientHeight={viewHeight} on:scroll={() => (scrollTop = scroller?.scrollTop ?? 0)}>
+<div class="summary" style="--tx-toolbar-h: {toolbarHeight}px" bind:this={scroller} bind:clientHeight={viewHeight} on:scroll={() => (scrollTop = scroller?.scrollTop ?? 0)}>
   {#if !$selectedResult}
     <p class="muted">No file selected.</p>
   {:else if ps.path !== $selectedResult.path}
@@ -68,7 +103,7 @@
     {#if rows.length === 0}
       <p class="muted">No transactions in this file.</p>
     {:else}
-      <div class="tx-toolbar">
+      <div class="tx-toolbar" bind:clientHeight={toolbarHeight}>
         <input
           class="search"
           type="search"
@@ -83,6 +118,11 @@
           {#if filtered}{order.length} of {rows.length}{:else}{rows.length}{/if}
           {rows.length === 1 ? "transaction" : "transactions"}
         </span>
+        <span class="sum">
+          Sum: <strong class="mono">{formatSums(shown.sums)}</strong>
+          {#if filtered}<span class="count">of <span class="mono">{formatSums(total.sums)}</span></span>{/if}
+          {#if shown.skipped > 0}<span class="count">({shown.skipped} without valid amount)</span>{/if}
+        </span>
       </div>
       <table class:dd>
         <colgroup>
@@ -91,8 +131,14 @@
         </colgroup>
         <thead>
           <tr>
-            <th>#</th><th>Name</th><th>IBAN</th><th class="num">Amount</th><th>Remittance info</th>
-            {#if dd}<th>Mandate ID</th><th>Signature date</th>{/if}
+            {#each columns as c (c.key)}
+              {@const active = sortKey === c.key && !(c.key === "index" && sortDir === "asc")}
+              <th class:num={c.num} aria-sort={sortKey === c.key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
+                <button class="sort" class:active on:click={() => sortBy(c.key)} title="Sort by {c.label}">
+                  {c.label}<span class="arrow" aria-hidden="true">{active ? (sortDir === "asc" ? "▲" : "▼") : ""}</span>
+                </button>
+              </th>
+            {/each}
           </tr>
         </thead>
         <tbody>
@@ -128,9 +174,9 @@
   .summary { padding: var(--sp-3) var(--sp-4); }
   .muted { color: var(--muted); font-style: italic; }
   /* Toolbar and table header stay visible while scrolling; the header sits right below the toolbar. */
-  .summary { --tx-toolbar-h: 40px; }
   .tx-toolbar {
-    display: flex; align-items: center; gap: var(--sp-3); height: var(--tx-toolbar-h); box-sizing: border-box;
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3);
+    min-height: 40px; padding: var(--sp-1) 0; box-sizing: border-box;
     position: sticky; top: 0; left: 0; z-index: 2; background: var(--panel);
   }
   .count { font-size: 12px; color: var(--muted); }
@@ -154,6 +200,15 @@
   }
   th { font-weight: 600; position: sticky; top: var(--tx-toolbar-h); background: var(--panel); height: 28px; z-index: 1; }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .sum { font-size: 12px; display: inline-flex; gap: var(--sp-1); align-items: baseline; flex-wrap: wrap; }
+  .sort {
+    all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 2px;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sort:hover, .sort.active { color: var(--accent); }
+  .sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  th.num .sort { flex-direction: row-reverse; }
+  .arrow { font-size: 9px; width: 9px; }
   td.missing { color: var(--muted); }
   tr.spacer td, tr.spacer { border: 0; padding: 0; }
 </style>
