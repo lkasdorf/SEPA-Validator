@@ -1,5 +1,5 @@
-//! Per-file SEPA payment summary: creditor + PmtInf block stats + per-transaction
-//! remittance info. Read-only extraction with quick-xml; does not affect validation.
+//! Per-file SEPA payment summary: creditor (pain.008) or debtor (pain.001) +
+//! PmtInf block stats + per-transaction remittance info. Read-only extraction with quick-xml; does not affect validation.
 
 use std::path::Path;
 
@@ -24,6 +24,21 @@ impl Creditor {
             || self.iban.is_some()
             || self.bic.is_some()
             || self.creditor_id.is_some()
+    }
+}
+
+/// Ordering party of a credit transfer (pain.001): PmtInf-level Dbtr/DbtrAcct/DbtrAgt.
+#[derive(Debug, Clone, PartialEq, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Debtor {
+    pub name: Option<String>,
+    pub iban: Option<String>,
+    pub bic: Option<String>,
+}
+
+impl Debtor {
+    fn has_any(&self) -> bool {
+        self.name.is_some() || self.iban.is_some() || self.bic.is_some()
     }
 }
 
@@ -52,6 +67,7 @@ pub struct PaymentSummary {
     pub message_type: String,
     pub pmt_inf_count: u32,
     pub creditor: Option<Creditor>,
+    pub debtor: Option<Debtor>,
     pub blocks: Vec<PmtInfSummary>,
     pub transactions: Vec<RemittanceEntry>,
 }
@@ -88,6 +104,8 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
     let mut current: Option<PmtInfSummary> = None;
     let mut current_creditor = Creditor::default();
     let mut creditor: Option<Creditor> = None;
+    let mut current_debtor = Debtor::default();
+    let mut debtor: Option<Debtor> = None;
     let mut current_tx: Option<TxAccum> = None;
 
     loop {
@@ -102,6 +120,7 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
                     "PmtInf" => {
                         current = Some(PmtInfSummary::default());
                         current_creditor = Creditor::default();
+                        current_debtor = Debtor::default();
                     }
                     "CdtTrfTxInf" | "DrctDbtTxInf" => current_tx = Some(TxAccum::default()),
                     _ => {}
@@ -117,6 +136,9 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
                         }
                         if creditor.is_none() && current_creditor.has_any() {
                             creditor = Some(std::mem::take(&mut current_creditor));
+                        }
+                        if debtor.is_none() && current_debtor.has_any() {
+                            debtor = Some(std::mem::take(&mut current_debtor));
                         }
                     }
                     "CdtTrfTxInf" | "DrctDbtTxInf" => {
@@ -179,6 +201,17 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
                     {
                         current_creditor.bic.get_or_insert(text);
                     }
+                    "Nm" if parent == "Dbtr" && current_tx.is_none() => {
+                        current_debtor.name.get_or_insert(text);
+                    }
+                    "IBAN" if parent == "Id" && grand == "DbtrAcct" && current_tx.is_none() => {
+                        current_debtor.iban.get_or_insert(text);
+                    }
+                    "BIC" | "BICFI"
+                        if parent == "FinInstnId" && grand == "DbtrAgt" && current_tx.is_none() =>
+                    {
+                        current_debtor.bic.get_or_insert(text);
+                    }
                     "Id" if parent == "Othr"
                         && current_tx.is_none()
                         && stack.iter().any(|s| s == "CdtrSchmeId") =>
@@ -215,6 +248,7 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
         message_type,
         pmt_inf_count: blocks.len() as u32,
         creditor,
+        debtor,
         blocks,
         transactions,
     })
@@ -243,6 +277,9 @@ mod tests {
       <CtrlSum>300.00</CtrlSum>
       <PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl></PmtTpInf>
       <ReqdExctnDt>2026-06-20</ReqdExctnDt>
+      <Dbtr><Nm>Payer AG</Nm></Dbtr>
+      <DbtrAcct><Id><IBAN>DE02120300000000202051</IBAN></Id></DbtrAcct>
+      <DbtrAgt><FinInstnId><BIC>BYLADEM1001</BIC></FinInstnId></DbtrAgt>
       <CdtTrfTxInf><PmtId><InstrId>INSTR-1</InstrId><EndToEndId>E2E-1</EndToEndId></PmtId><Cdtr><Nm>Payee One</Nm></Cdtr><RmtInf><Ustrd>Invoice 1</Ustrd></RmtInf></CdtTrfTxInf>
       <CdtTrfTxInf><PmtId><EndToEndId>E2E-2</EndToEndId></PmtId><Cdtr><Nm>Payee Two</Nm></Cdtr><RmtInf><Ustrd>Invoice 2</Ustrd></RmtInf></CdtTrfTxInf>
     </PmtInf>
@@ -252,6 +289,7 @@ mod tests {
       <CtrlSum>300.00</CtrlSum>
       <PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl></PmtTpInf>
       <ReqdExctnDt>2026-06-21</ReqdExctnDt>
+      <Dbtr><Nm>Second Payer</Nm></Dbtr>
       <CdtTrfTxInf><RmtInf><Ustrd>Invoice 3</Ustrd></RmtInf></CdtTrfTxInf>
     </PmtInf>
   </CstmrCdtTrfInitn>
@@ -272,6 +310,11 @@ mod tests {
         assert_eq!(s.blocks[0].reqd_date.as_deref(), Some("2026-06-20"));
         // pain.001: Cdtr is per transaction, so there is NO PmtInf-level creditor.
         assert_eq!(s.creditor, None);
+        // Debtor comes from the first PmtInf block; payee names per tx are ignored.
+        let d = s.debtor.expect("debtor present");
+        assert_eq!(d.name.as_deref(), Some("Payer AG"));
+        assert_eq!(d.iban.as_deref(), Some("DE02120300000000202051"));
+        assert_eq!(d.bic.as_deref(), Some("BYLADEM1001"));
         // One entry per transaction, document order.
         assert_eq!(s.transactions.len(), 3);
         assert_eq!(s.transactions[0].ustrd.as_deref(), Some("Invoice 1"));
@@ -303,7 +346,7 @@ mod tests {
       <CdtrAcct><Id><IBAN>DE89370400440532013000</IBAN></Id></CdtrAcct>
       <CdtrAgt><FinInstnId><BIC>COBADEFFXXX</BIC></FinInstnId></CdtrAgt>
       <CdtrSchmeId><Id><PrvtId><Othr><Id>DE98ZZZ09999999999</Id></Othr></PrvtId></Id></CdtrSchmeId>
-      <DrctDbtTxInf><RmtInf><Ustrd>Beitrag Mai</Ustrd></RmtInf></DrctDbtTxInf>
+      <DrctDbtTxInf><Dbtr><Nm>Member One</Nm></Dbtr><DbtrAcct><Id><IBAN>DE02120300000000202051</IBAN></Id></DbtrAcct><RmtInf><Ustrd>Beitrag Mai</Ustrd></RmtInf></DrctDbtTxInf>
       <DrctDbtTxInf><RmtInf><Ustrd></Ustrd></RmtInf></DrctDbtTxInf>
       <DrctDbtTxInf></DrctDbtTxInf>
     </PmtInf>
@@ -325,6 +368,8 @@ mod tests {
         assert_eq!(c.iban.as_deref(), Some("DE89370400440532013000"));
         assert_eq!(c.bic.as_deref(), Some("COBADEFFXXX"));
         assert_eq!(c.creditor_id.as_deref(), Some("DE98ZZZ09999999999"));
+        // pain.008: Dbtr is per transaction, so there is NO PmtInf-level debtor.
+        assert_eq!(s.debtor, None);
         assert_eq!(s.transactions.len(), 3);
         assert_eq!(s.transactions[0].ustrd.as_deref(), Some("Beitrag Mai"));
         assert_eq!(s.transactions[1].ustrd, None); // empty <Ustrd></Ustrd>
@@ -343,6 +388,7 @@ mod tests {
       <NbOfTxs>1</NbOfTxs>
       <PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl></PmtTpInf>
       <ReqdExctnDt><Dt>2026-08-15</Dt></ReqdExctnDt>
+      <DbtrAgt><FinInstnId><BICFI>BYLADEM1001</BICFI></FinInstnId></DbtrAgt>
       <CdtTrfTxInf><RmtInf><Ustrd>Nested date</Ustrd></RmtInf></CdtTrfTxInf>
     </PmtInf>
   </CstmrCdtTrfInitn>
@@ -350,6 +396,10 @@ mod tests {
         );
         let s = extract_payment_summary(&p).unwrap();
         assert_eq!(s.blocks[0].reqd_date.as_deref(), Some("2026-08-15"));
+        // v09 uses BICFI; a debtor with only an agent BIC still shows up.
+        let d = s.debtor.expect("debtor present");
+        assert_eq!(d.name, None);
+        assert_eq!(d.bic.as_deref(), Some("BYLADEM1001"));
         assert_eq!(s.transactions.len(), 1);
         assert_eq!(s.transactions[0].ustrd.as_deref(), Some("Nested date"));
     }
@@ -365,6 +415,7 @@ mod tests {
         assert!(s.blocks.is_empty());
         assert!(s.transactions.is_empty());
         assert_eq!(s.creditor, None);
+        assert_eq!(s.debtor, None);
     }
 
     #[test]

@@ -22,6 +22,14 @@
         <dt>Creditor ID</dt><dd class="mono">{data.creditor.creditorId ?? "—"}</dd>
       </dl>
     {/if}
+    {#if data.debtor}
+      <h3>Debtor (Dbtr)</h3>
+      <dl class="cdtr">
+        <dt>Name</dt><dd>{data.debtor.name ?? "—"}</dd>
+        <dt>IBAN</dt><dd class="mono">{data.debtor.iban ?? "—"}</dd>
+        <dt>BIC</dt><dd class="mono">{data.debtor.bic ?? "—"}</dd>
+      </dl>
+    {/if}
     <h3>
       {data.pmtInfCount} PmtInf {data.pmtInfCount === 1 ? "block" : "blocks"}{data.messageType
         ? ` · ${data.messageType}`

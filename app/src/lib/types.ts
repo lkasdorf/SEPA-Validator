@@ -47,6 +47,13 @@ export interface Creditor {
   creditorId: string | null;
 }
 
+/** Ordering party of a credit transfer (pain.001): PmtInf-level Dbtr/DbtrAcct/DbtrAgt. */
+export interface Debtor {
+  name: string | null;
+  iban: string | null;
+  bic: string | null;
+}
+
 export interface PmtInfSummary {
   nbOfTxs: string | null;
   ctrlSum: string | null;
@@ -66,6 +73,7 @@ export interface PaymentSummary {
   messageType: string;
   pmtInfCount: number;
   creditor: Creditor | null;
+  debtor: Debtor | null;
   blocks: PmtInfSummary[];
   transactions: RemittanceEntry[];
 }

@@ -14,6 +14,7 @@ const summary = (messageType: string): PaymentSummary => ({
   messageType,
   pmtInfCount: 0,
   creditor: null,
+  debtor: null,
   blocks: [],
   transactions: [],
 });
