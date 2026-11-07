@@ -1,5 +1,13 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
-import type { ValidationEvent, ValidationResult, PaymentSummary, SchemaInfo, ImportResult, GvcInfo } from "./types";
+import type {
+  ValidationEvent,
+  ValidationResult,
+  PaymentSummary,
+  SchemaInfo,
+  ImportResult,
+  GvcInfo,
+  StatementPreview,
+} from "./types";
 
 /** Start validation; `onEvent` is called for each streamed event in order. */
 export async function startValidation(
@@ -27,6 +35,16 @@ export function readFormatted(path: string): Promise<string> {
 
 export function readPaymentSummary(path: string): Promise<PaymentSummary> {
   return invoke<PaymentSummary>("read_payment_summary", { path });
+}
+
+/** What "Generate statement" would write for the payment file `source`. */
+export function previewStatements(source: string): Promise<StatementPreview> {
+  return invoke<StatementPreview>("preview_statements", { source });
+}
+
+/** Write synthetic camt.053 statements next to `source`; returns their paths. */
+export function generateStatements(source: string, openingBalance: string): Promise<string[]> {
+  return invoke<string[]>("generate_statements", { source, openingBalance });
 }
 
 export function writeTextFile(path: string, contents: string): Promise<void> {

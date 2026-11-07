@@ -7,6 +7,7 @@ mod payments;
 mod plausibility;
 mod scanner;
 mod schema;
+mod statement_gen;
 mod statements;
 mod validator;
 
@@ -36,6 +37,8 @@ pub fn run() {
             commands::cancel_validation,
             commands::write_text_file,
             commands::save_formatted,
+            commands::preview_statements,
+            commands::generate_statements,
             commands::read_formatted,
             commands::read_payment_summary,
             commands::gvc_status,

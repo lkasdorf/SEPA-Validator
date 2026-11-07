@@ -11,8 +11,10 @@
   import AboutDialog from "./lib/AboutDialog.svelte";
   import UpdateDialog from "./lib/UpdateDialog.svelte";
   import SaveFormatted from "./lib/SaveFormatted.svelte";
+  import StatementDialog from "./lib/StatementDialog.svelte";
+  import { isPaymentFile } from "./lib/statementGen";
   import EmptyState from "./lib/EmptyState.svelte";
-  import { results, progress, dragging, selectedResult, runId, openViewerSearch, foldAllInViewer, unfoldAllInViewer, schemaDialogOpen, viewerLarge, aboutDialogOpen, updateDialogOpen } from "./lib/stores";
+  import { results, progress, dragging, selectedResult, runId, openViewerSearch, foldAllInViewer, unfoldAllInViewer, schemaDialogOpen, viewerLarge, aboutDialogOpen, updateDialogOpen, statementDialogOpen } from "./lib/stores";
   import { loadPaymentSummary } from "./lib/paymentSummary";
 
   let viewerTab: "xml" | "summary" | "remittance" | "transactions" = "xml";
@@ -66,6 +68,10 @@
         {#if viewerTab === "xml"}
           <button class="btn btn--ghost" on:click={() => $openViewerSearch()} disabled={!$selectedResult}>Search</button>
           <SaveFormatted />
+          {#if $selectedResult && isPaymentFile($selectedResult.namespace)}
+            <button class="btn btn--ghost" on:click={() => statementDialogOpen.set(true)} disabled={$progress.running}
+                    title="Create a synthetic camt.053 bank statement as if the bank had booked this file">Generate statement…</button>
+          {/if}
           {#if !$viewerLarge}
             <button class="btn btn--ghost" on:click={() => $foldAllInViewer()} disabled={!$selectedResult}>Collapse all</button>
             <button class="btn btn--ghost" on:click={() => $unfoldAllInViewer()} disabled={!$selectedResult}>Expand all</button>
@@ -88,5 +94,6 @@
   {#if $dragging && $results.length > 0}<div class="drop-overlay" aria-hidden="true"><span>Drop to validate</span></div>{/if}
   {#if $schemaDialogOpen}<SchemaDialog />{/if}
   {#if $aboutDialogOpen}<AboutDialog />{/if}
+  {#if $statementDialogOpen}<StatementDialog />{/if}
   {#if $updateDialogOpen}<UpdateDialog />{/if}
 </div>

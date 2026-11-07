@@ -14,8 +14,8 @@ vi.mock("./api", () => ({
   cancelValidation: () => cancelValidationApi(),
 }));
 
-const { runValidation, cancelValidation } = await import("./validation");
-const { results, progress, runId } = await import("./stores");
+const { runValidation, appendValidation, cancelValidation } = await import("./validation");
+const { results, progress, runId, selectedIndex } = await import("./stores");
 
 const result = (file: string): ValidationResult => ({
   file,
@@ -67,6 +67,18 @@ describe("runValidation", () => {
     await runValidation(["a.xml"]);
     listeners[0]({ event: "finished", data: { total: 1, cancelled: true } });
     expect(get(progress)).toMatchObject({ running: false, cancelled: true });
+  });
+
+  it("appendValidation keeps existing results and selects the first new one", async () => {
+    await runValidation(["a.xml"]);
+    emitResult(0, 0, "a.xml");
+    await appendValidation(["b.xml", "c.xml"]);
+    emitResult(0, 0, "late.xml");
+    emitResult(1, 0, "b.xml");
+    emitResult(1, 1, "c.xml");
+    expect(get(results).map((r) => r.file)).toEqual(["a.xml", "b.xml", "c.xml"]);
+    expect(get(selectedIndex)).toBe(1);
+    expect(startValidation).toHaveBeenLastCalledWith(["b.xml", "c.xml"], expect.any(Function));
   });
 
   it("stops showing progress when the run could not be started", async () => {

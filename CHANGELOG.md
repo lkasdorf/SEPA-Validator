@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Generate a bank statement from a payment file.** With a pain.001 or pain.008 file selected, **Generate statement…** in the XML tab writes camt.053.001.08 statements next to it, as if the bank had booked the file: one statement per account and booking day, each day's closing balance opening the next. The opening balance is entered in the dialog (default 10,000.00 EUR). Files are named `<file>_camt053_YYYYMMDD.xml` (with the last 4 IBAN characters when the file covers several accounts, more if two accounts share them) and never overwrite anything (`_1`, `_2`). The new statements are added to the file list and validated. Account, counterparties, references and remittance text come from the source; everything the bank would add is synthetic (`SYNTH-` IDs, "SYNTHETIC TEST BANK"). Only EUR is booked; files with other currencies, unreadable amounts or invalid IBANs are refused with the reasons listed.
+
 ## [2.5.0] - 2026-10-16
 
 ### Added
