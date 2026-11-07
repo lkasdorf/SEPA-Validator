@@ -83,6 +83,111 @@ fn root_names_swiss_schema(root: &BytesStart) -> bool {
     })
 }
 
+/// Which schema variant a file needs when its namespace is shared (see
+/// `schema::Variant`). Swiss wins: SPS files may carry CHF, SHAR etc.
+pub fn detect_variant(path: &Path) -> schema::Variant {
+    if is_swiss(path) {
+        schema::Variant::Swiss
+    } else {
+        dk_credit_transfer_kind(path)
+    }
+}
+
+/// Tells the three DK pain.001 subsets apart:
+/// - SEPA (standard): EUR, `ChrgBr` SLEV, service level SEPA.
+/// - Urgent euro (CCU): EUR, `ChrgBr` SHAR, service level URGP.
+/// - Foreign (AXZ): any currency, a per-transaction `ChrgBr` DEBT/CRED/SHAR and
+///   service level NURG/URGP/SDVA, optionally an equivalent amount or a cheque.
+///
+/// A non-EUR amount, `EqvtAmt`, a cheque, `ChrgBr` DEBT/CRED, a service level
+/// other than SEPA/URGP or an `xsi:schemaLocation` naming AXZ make it foreign
+/// (reading stops there). Otherwise URGP, SHAR or a CCU schemaLocation make it
+/// urgent, and anything else is SEPA. The few files valid against both CCU and
+/// AXZ (EUR, URGP, SHAR) are guessed as CCU; the validator then falls back to the
+/// other DK schemas if the guess fails (`dk_candidates`).
+pub fn dk_credit_transfer_kind(path: &Path) -> schema::Variant {
+    use schema::Variant;
+    let Ok(mut reader) = Reader::from_file(path) else {
+        return Variant::Standard;
+    };
+    reader.config_mut().trim_text(true);
+    let mut buf = Vec::new();
+    let mut stack: Vec<Vec<u8>> = Vec::new();
+    let mut urgent = false;
+    loop {
+        buf.clear();
+        let foreign = match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => {
+                let signal = element_signal(&e, stack.is_empty());
+                stack.push(e.local_name().as_ref().to_vec());
+                signal
+            }
+            Ok(Event::Empty(e)) => element_signal(&e, stack.is_empty()),
+            Ok(Event::End(_)) => {
+                stack.pop();
+                Signal::None
+            }
+            Ok(Event::Text(t)) => {
+                let value = t.unescape().unwrap_or_default();
+                text_signal(&stack, value.trim())
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            Ok(_) => Signal::None,
+        };
+        match foreign {
+            Signal::Foreign => return Variant::Foreign,
+            Signal::Urgent => urgent = true,
+            Signal::None => {}
+        }
+    }
+    if urgent {
+        Variant::Urgent
+    } else {
+        Variant::Standard
+    }
+}
+
+enum Signal {
+    None,
+    Urgent,
+    Foreign,
+}
+
+fn element_signal(e: &BytesStart, is_root: bool) -> Signal {
+    let attr = |name: &[u8]| {
+        e.attributes()
+            .flatten()
+            .find(|a| a.key.local_name().as_ref() == name)
+            .map(|a| String::from_utf8_lossy(&a.value).to_ascii_uppercase())
+    };
+    match e.local_name().as_ref() {
+        _ if is_root => match attr(b"schemaLocation") {
+            Some(l) if l.contains("AXZ") => Signal::Foreign,
+            Some(l) if l.contains("CCU") => Signal::Urgent,
+            _ => Signal::None,
+        },
+        b"EqvtAmt" => Signal::Foreign,
+        b"InstdAmt" if attr(b"Ccy").is_some_and(|c| c.trim() != "EUR") => Signal::Foreign,
+        _ => Signal::None,
+    }
+}
+
+fn text_signal(stack: &[Vec<u8>], value: &str) -> Signal {
+    let (parent, element) = match stack {
+        [.., p, e] => (p.as_slice(), e.as_slice()),
+        _ => return Signal::None,
+    };
+    match (parent, element, value) {
+        (_, b"ChrgBr", "DEBT" | "CRED") => Signal::Foreign,
+        (_, b"ChrgBr", "SHAR") => Signal::Urgent,
+        (_, b"PmtMtd", "CHK" | "TRA") => Signal::Foreign,
+        (b"SvcLvl", b"Cd", "URGP") => Signal::Urgent,
+        (b"SvcLvl", b"Cd", "SEPA") => Signal::None,
+        (b"SvcLvl", b"Cd", _) => Signal::Foreign,
+        _ => Signal::None,
+    }
+}
+
 /// Holds a per-run cache of compiled schemas. Not Send (wraps libxml2 pointers):
 /// construct and use it on a single worker thread.
 pub struct Validator {
@@ -162,8 +267,12 @@ impl Validator {
             }
         };
 
-        let swiss = schema::has_swiss_variant(&ns) && is_swiss(path);
-        let schema_name = match schema::resolve(&ns, swiss) {
+        let variant = if schema::has_variants(&ns) {
+            detect_variant(path)
+        } else {
+            schema::Variant::Standard
+        };
+        let schema_name = match schema::resolve(&ns, variant) {
             Some(name) => name,
             None => {
                 return mk(
@@ -202,31 +311,6 @@ impl Validator {
             );
         }
 
-        if !self.cache.contains_key(schema_name) {
-            match self.compile(schema_name) {
-                Ok(ctx) => {
-                    self.cache.insert(schema_name, ctx);
-                }
-                Err(text) => {
-                    return mk(
-                        ns.clone(),
-                        schema_name.to_string(),
-                        vec![Message {
-                            severity: Severity::Error,
-                            text,
-                            line: None,
-                            column: None,
-                            hint: None,
-                        }],
-                        Status::Error,
-                        1,
-                        0,
-                    )
-                }
-            }
-        }
-        let validator = self.cache.get_mut(schema_name).unwrap();
-
         // Format first, then validate the formatted text so that libxml's
         // reported line/col numbers match what the viewer shows (`read_formatted`).
         let formatted = match format_xml(path) {
@@ -262,19 +346,41 @@ impl Validator {
             }
         };
 
-        // Call libxml directly: the crate's `validate_document` panics on rc == -1
-        // (e.g. entity nodes) and only drains the error log on failure.
-        let rc =
-            unsafe { libxml::bindings::xmlSchemaValidateDoc(validator.as_ptr(), doc.doc_ptr()) };
-        let mut messages: Vec<Message> = validator.drain_errors().iter().map(to_message).collect();
-        if rc != 0 && !messages.iter().any(|m| m.severity == Severity::Error) {
-            messages.push(Message {
-                severity: Severity::Error,
-                text: format!("Schema validation failed (libxml2 code {rc})."),
-                line: None,
-                column: None,
-                hint: None,
-            });
+        let mut schema_name = schema_name;
+        let mut messages = match self.schema_messages(schema_name, &doc) {
+            Ok(m) => m,
+            Err(text) => {
+                return mk(
+                    ns.clone(),
+                    schema_name.to_string(),
+                    vec![Message {
+                        severity: Severity::Error,
+                        text,
+                        line: None,
+                        column: None,
+                        hint: None,
+                    }],
+                    Status::Error,
+                    1,
+                    0,
+                )
+            }
+        };
+        // The DK subset was guessed from the content; if the guess fails, a file
+        // that is valid against another DK subset of the same namespace is that one.
+        if has_errors(&messages) && variant != schema::Variant::Swiss {
+            for alt in schema::dk_candidates(&ns) {
+                if alt == schema_name || !self.schema_dir.join(alt).exists() {
+                    continue;
+                }
+                if let Ok(m) = self.schema_messages(alt, &doc) {
+                    if !has_errors(&m) {
+                        schema_name = alt;
+                        messages = m;
+                        break;
+                    }
+                }
+            }
         }
         // Checks the schema can't express (control sums, IBAN check digits, ...).
         messages.extend(crate::plausibility::check(
@@ -283,6 +389,34 @@ impl Validator {
         ));
 
         ValidationResult::from_messages(file, path_str, ns, schema_name.to_string(), messages)
+    }
+
+    /// XSD validation messages for `doc` against an imported schema (compiled once per run).
+    fn schema_messages(
+        &mut self,
+        schema_name: &'static str,
+        doc: &Document,
+    ) -> Result<Vec<Message>, String> {
+        if !self.cache.contains_key(schema_name) {
+            let ctx = self.compile(schema_name)?;
+            self.cache.insert(schema_name, ctx);
+        }
+        let validator = self.cache.get_mut(schema_name).unwrap();
+        // Call libxml directly: the crate's `validate_document` panics on rc == -1
+        // (e.g. entity nodes) and only drains the error log on failure.
+        let rc =
+            unsafe { libxml::bindings::xmlSchemaValidateDoc(validator.as_ptr(), doc.doc_ptr()) };
+        let mut messages: Vec<Message> = validator.drain_errors().iter().map(to_message).collect();
+        if rc != 0 && !has_errors(&messages) {
+            messages.push(Message {
+                severity: Severity::Error,
+                text: format!("Schema validation failed (libxml2 code {rc})."),
+                line: None,
+                column: None,
+                hint: None,
+            });
+        }
+        Ok(messages)
     }
 
     fn compile(&self, filename: &str) -> Result<SchemaValidationContext, String> {
@@ -340,6 +474,10 @@ fn parse_strict(text: &str) -> Result<Document, Message> {
         b::xmlFreeParserCtxt(ctxt);
         result
     }
+}
+
+fn has_errors(messages: &[Message]) -> bool {
+    messages.iter().any(|m| m.severity == Severity::Error)
 }
 
 /// Map a libxml StructuredError to our Message.
@@ -474,6 +612,257 @@ mod tests {
         assert_eq!(v.validate_file(&de).schema, "pain.001.001.09.xsd");
     }
 
+    /// pain.001.001.09 with one transaction; `extra` goes in front of its amount.
+    fn pain001_tx(debtor_iban: &str, ccy: &str, extra: &str) -> String {
+        format!(
+            r#"<?xml version="1.0"?><Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09"><CstmrCdtTrfInitn><PmtInf><PmtInfId>P1</PmtInfId><PmtMtd>TRF</PmtMtd><DbtrAcct><Id><IBAN>{debtor_iban}</IBAN></Id></DbtrAcct><CdtTrfTxInf>{extra}<Amt><InstdAmt Ccy="{ccy}">1.00</InstdAmt></Amt></CdtTrfTxInf></PmtInf></CstmrCdtTrfInitn></Document>"#
+        )
+    }
+
+    const DE_IBAN: &str = "DE89370400440532013000";
+
+    fn kind_of(tag: &str, xml: &str) -> schema::Variant {
+        detect_variant(&temp_named(&format!("kind_{tag}"), xml))
+    }
+
+    #[test]
+    fn sepa_credit_transfers_are_standard() {
+        let sepa = "<PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl></PmtTpInf><ChrgBr>SLEV</ChrgBr>";
+        assert_eq!(
+            kind_of("sepa", &pain001_tx(DE_IBAN, "EUR", sepa)),
+            schema::Variant::Standard
+        );
+        assert_eq!(
+            kind_of("sepa_bare", &pain001_tx(DE_IBAN, "EUR", "")),
+            schema::Variant::Standard
+        );
+    }
+
+    #[test]
+    fn urgent_euro_transfers_are_ccu() {
+        for (tag, extra) in [
+            (
+                "urgp",
+                "<PmtTpInf><SvcLvl><Cd>URGP</Cd></SvcLvl></PmtTpInf>",
+            ),
+            ("shar", "<ChrgBr>SHAR</ChrgBr>"),
+            (
+                "both",
+                "<PmtTpInf><SvcLvl><Cd>URGP</Cd></SvcLvl></PmtTpInf><ChrgBr>SHAR</ChrgBr>",
+            ),
+        ] {
+            let xml = pain001_tx(DE_IBAN, "EUR", extra);
+            assert_eq!(kind_of(tag, &xml), schema::Variant::Urgent, "{tag}");
+        }
+    }
+
+    #[test]
+    fn foreign_signals_make_a_file_axz() {
+        for (tag, ccy, extra) in [
+            ("debt", "EUR", "<ChrgBr>DEBT</ChrgBr>"),
+            ("cred", "EUR", "<ChrgBr>CRED</ChrgBr>"),
+            ("usd", "USD", ""),
+            ("usd_shar", "USD", "<ChrgBr>SHAR</ChrgBr>"),
+            (
+                "nurg",
+                "EUR",
+                "<PmtTpInf><SvcLvl><Cd>NURG</Cd></SvcLvl></PmtTpInf>",
+            ),
+            (
+                "urgp_debt",
+                "EUR",
+                "<PmtTpInf><SvcLvl><Cd>URGP</Cd></SvcLvl></PmtTpInf><ChrgBr>DEBT</ChrgBr>",
+            ),
+            (
+                "eqvtamt",
+                "EUR",
+                r#"<EqvtAmt><Amt Ccy="EUR">1.00</Amt><CcyOfTrf>USD</CcyOfTrf></EqvtAmt>"#,
+            ),
+        ] {
+            let xml = pain001_tx(DE_IBAN, ccy, extra);
+            assert_eq!(kind_of(tag, &xml), schema::Variant::Foreign, "{tag}");
+        }
+        let cheque = pain001_tx(DE_IBAN, "EUR", "").replace(">TRF<", ">CHK<");
+        assert_eq!(kind_of("chk", &cheque), schema::Variant::Foreign);
+    }
+
+    #[test]
+    fn schema_location_names_the_subset() {
+        let with_location = |xsd: &str| {
+            pain001_tx(DE_IBAN, "EUR", "").replace(
+                r#"pain.001.001.09">"#,
+                &format!(
+                    r#"pain.001.001.09" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09 {xsd}">"#
+                ),
+            )
+        };
+        assert_eq!(
+            kind_of("loc_axz", &with_location("pain.001.001.09_AXZ_GBIC_5.xsd")),
+            schema::Variant::Foreign
+        );
+        assert_eq!(
+            kind_of("loc_ccu", &with_location("pain.001.001.09_CCU_GBIC_5.xsd")),
+            schema::Variant::Urgent
+        );
+    }
+
+    #[test]
+    fn swiss_wins_over_dk_signals() {
+        let xml = pain001_tx("CH9300762011623852957", "CHF", "<ChrgBr>SHAR</ChrgBr>");
+        assert_eq!(kind_of("ch_shar", &xml), schema::Variant::Swiss);
+    }
+
+    #[test]
+    fn dk_subsets_resolve_to_their_schemas() {
+        let empty = std::env::temp_dir().join("sepa_swiss_test_empty_schemas");
+        std::fs::create_dir_all(&empty).unwrap();
+        let mut v = super::Validator::new(empty);
+        for (tag, ccy, extra, schema) in [
+            (
+                "axz",
+                "GBP",
+                "<ChrgBr>DEBT</ChrgBr>",
+                "pain.001.001.09_AXZ_GBIC_5.xsd",
+            ),
+            (
+                "ccu",
+                "EUR",
+                "<ChrgBr>SHAR</ChrgBr>",
+                "pain.001.001.09_CCU_GBIC_5.xsd",
+            ),
+            ("sct", "EUR", "<ChrgBr>SLEV</ChrgBr>", "pain.001.001.09.xsd"),
+        ] {
+            let p = temp_named(&format!("resolve_{tag}"), &pain001_tx(DE_IBAN, ccy, extra));
+            let r = v.validate_file(&p);
+            assert_eq!(r.schema, schema, "{tag}");
+            assert_eq!(r.status, Status::NoSchema, "{tag}");
+        }
+    }
+
+    /// Self-written mini schemas named like the DK subsets: SEPA and CCU reject
+    /// everything, AXZ accepts everything (committed, so CI runs these tests).
+    fn mini_subset_dir() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("dk_subsets")
+    }
+
+    #[test]
+    fn a_failed_guess_falls_back_to_the_dk_subset_that_accepts_the_file() {
+        let shar = temp_named(
+            "mini_shar",
+            &pain001_tx(DE_IBAN, "EUR", "<ChrgBr>SHAR</ChrgBr>"),
+        );
+        let r = super::Validator::new(mini_subset_dir()).validate_file(&shar);
+        assert_eq!(r.schema, "pain.001.001.09_AXZ_GBIC_5.xsd");
+        assert_eq!(r.errors, 0, "{:?}", r.messages);
+    }
+
+    #[test]
+    fn the_guess_is_kept_when_no_dk_subset_accepts_the_file() {
+        let dir = std::env::temp_dir().join("sepa_mini_subsets_without_axz");
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in ["pain.001.001.09.xsd", "pain.001.001.09_CCU_GBIC_5.xsd"] {
+            std::fs::copy(mini_subset_dir().join(f), dir.join(f)).unwrap();
+        }
+        let _ = std::fs::remove_file(dir.join("pain.001.001.09_AXZ_GBIC_5.xsd"));
+        let shar = temp_named(
+            "mini_shar_kept",
+            &pain001_tx(DE_IBAN, "EUR", "<ChrgBr>SHAR</ChrgBr>"),
+        );
+        let r = super::Validator::new(dir).validate_file(&shar);
+        assert_eq!(r.schema, "pain.001.001.09_CCU_GBIC_5.xsd");
+        assert_eq!(r.status, Status::Invalid);
+    }
+
+    #[test]
+    fn swiss_files_never_fall_back_to_dk_subsets() {
+        let dir = std::env::temp_dir().join("sepa_mini_subsets_swiss");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::copy(
+            mini_subset_dir().join("pain.001.001.09.xsd"),
+            dir.join("pain.001.001.09.ch.03.xsd"),
+        )
+        .unwrap();
+        std::fs::copy(
+            mini_subset_dir().join("pain.001.001.09_AXZ_GBIC_5.xsd"),
+            dir.join("pain.001.001.09_AXZ_GBIC_5.xsd"),
+        )
+        .unwrap();
+        let ch = temp_named("mini_ch", &pain001_tx("CH9300762011623852957", "CHF", ""));
+        let r = super::Validator::new(dir).validate_file(&ch);
+        assert_eq!(r.schema, "pain.001.001.09.ch.03.xsd");
+        assert_eq!(r.status, Status::Invalid);
+    }
+
+    /// A complete DK pain.001.001.09 credit transfer; the parameters set what
+    /// tells the subsets apart.
+    fn dk_credit_transfer(svc_lvl: &str, ccy: &str, chrg_br: &str) -> String {
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09"><CstmrCdtTrfInitn>
+<GrpHdr><MsgId>MSG-1</MsgId><CreDtTm>2026-11-03T09:52:40</CreDtTm><NbOfTxs>1</NbOfTxs><CtrlSum>2500.00</CtrlSum><InitgPty><Nm>Muster GmbH</Nm></InitgPty></GrpHdr>
+<PmtInf><PmtInfId>PMT-1</PmtInfId><PmtMtd>TRF</PmtMtd><NbOfTxs>1</NbOfTxs><CtrlSum>2500.00</CtrlSum><ReqdExctnDt><Dt>2099-01-02</Dt></ReqdExctnDt>
+<Dbtr><Nm>Muster GmbH</Nm><PstlAdr><TwnNm>Berlin</TwnNm><Ctry>DE</Ctry></PstlAdr></Dbtr><DbtrAcct><Id><IBAN>DE89370400440532013000</IBAN></Id><Ccy>EUR</Ccy></DbtrAcct>
+<DbtrAgt><FinInstnId><BICFI>COBADEFFXXX</BICFI></FinInstnId></DbtrAgt>
+<CdtTrfTxInf><PmtId><EndToEndId>NOTPROVIDED</EndToEndId></PmtId>
+<PmtTpInf><SvcLvl><Cd>{svc_lvl}</Cd></SvcLvl></PmtTpInf>
+<Amt><InstdAmt Ccy="{ccy}">2500.00</InstdAmt></Amt><ChrgBr>{chrg_br}</ChrgBr>
+<CdtrAgt><FinInstnId><BICFI>CHASUS33XXX</BICFI></FinInstnId></CdtrAgt>
+<Cdtr><Nm>Example Inc</Nm><PstlAdr><TwnNm>New York</TwnNm><Ctry>US</Ctry></PstlAdr></Cdtr>
+<CdtrAcct><Id><IBAN>DE89370400440532013000</IBAN></Id></CdtrAcct>
+<RmtInf><Ustrd>Invoice 1</Ustrd></RmtInf></CdtTrfTxInf>
+</PmtInf></CstmrCdtTrfInitn></Document>"#
+        )
+    }
+
+    #[test]
+    fn dk_credit_transfers_validate_against_their_subset() {
+        let dir = test_schema_dir();
+        let needed = [
+            "pain.001.001.09.xsd",
+            "pain.001.001.09_AXZ_GBIC_5.xsd",
+            "pain.001.001.09_CCU_GBIC_5.xsd",
+        ];
+        if !needed.iter().all(|f| dir.join(f).exists()) {
+            eprintln!("SKIP: DK pain.001.001.09 subsets absent from xml_schema/");
+            return;
+        }
+        let mut v = super::Validator::new(dir);
+        for (tag, svc, ccy, chrg, schema) in [
+            (
+                "axz",
+                "NURG",
+                "USD",
+                "DEBT",
+                "pain.001.001.09_AXZ_GBIC_5.xsd",
+            ),
+            (
+                "ccu",
+                "URGP",
+                "EUR",
+                "SHAR",
+                "pain.001.001.09_CCU_GBIC_5.xsd",
+            ),
+        ] {
+            let p = temp_named(&format!("dk_{tag}"), &dk_credit_transfer(svc, ccy, chrg));
+            let r = v.validate_file(&p);
+            assert_eq!(r.schema, schema, "{tag}");
+            assert_eq!(r.errors, 0, "{tag} schema-valid: {:?}", r.messages);
+        }
+
+        // Looks urgent (EUR, URGP, SHAR) but has a non-IBAN creditor account,
+        // which only the AXZ subset allows: the guess (CCU) fails, AXZ is used.
+        let xml = dk_credit_transfer("URGP", "EUR", "SHAR").replace(
+            "<CdtrAcct><Id><IBAN>DE89370400440532013000</IBAN></Id></CdtrAcct>",
+            "<CdtrAcct><Id><Othr><Id>123456789</Id></Othr></Id></CdtrAcct>",
+        );
+        let r = v.validate_file(&temp_named("dk_fallback", &xml));
+        assert_eq!(r.schema, "pain.001.001.09_AXZ_GBIC_5.xsd");
+        assert_eq!(r.errors, 0, "fallback schema-valid: {:?}", r.messages);
+    }
+
     #[test]
     fn swiss_credit_transfer_validates_against_swiss_schema() {
         let dir = repo_root().join("xml_schema").join("ch");
@@ -522,6 +911,7 @@ mod tests {
     }
 
     use crate::model::Status;
+    use crate::schema;
 
     fn repo_root() -> std::path::PathBuf {
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
