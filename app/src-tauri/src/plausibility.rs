@@ -46,7 +46,10 @@ pub fn check(xml: &str, today: &str) -> Vec<Message> {
             Ok(_) => {}
         }
     }
-    c.finish()
+    let mut out = c.finish();
+    out.extend(crate::statements::check(xml));
+    out.sort_by_key(|m| m.line);
+    out
 }
 
 /// Today's date (UTC) as `YYYY-MM-DD`.
@@ -92,11 +95,12 @@ pub fn iban_is_valid(iban: &str) -> bool {
 }
 
 /// Fixed-point amount with 5 decimals, the most ISO 20022 amounts allow.
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
-struct Amount(i128);
+/// Parsed amounts are never negative; sums of debits and credits can be.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Amount(pub(crate) i128);
 
 impl Amount {
-    fn parse(s: &str) -> Option<Self> {
+    pub(crate) fn parse(s: &str) -> Option<Self> {
         let s = s.trim();
         let (int, frac) = s.split_once('.').unwrap_or((s, ""));
         let digits = |p: &str| p.bytes().all(|b| b.is_ascii_digit());
@@ -106,8 +110,17 @@ impl Amount {
         format!("{int}{frac:0<5}").parse().ok().map(Amount)
     }
 
+    /// Signed: `-` in front of negative amounts (-30.50).
+    pub(crate) fn display_signed(self) -> String {
+        if self.0 < 0 {
+            format!("-{}", Amount(-self.0).display())
+        } else {
+            self.display()
+        }
+    }
+
     /// At least two decimals, trailing zeros beyond that dropped (30.50, 0.125).
-    fn display(self) -> String {
+    pub(crate) fn display(self) -> String {
         let s = format!("{}.{:05}", self.0 / 100_000, self.0 % 100_000);
         let keep = s.len() - 3; // "x.yy": always keep two decimals
         let significant = s.trim_end_matches('0').len();
@@ -345,7 +358,6 @@ impl Checker<'_> {
         if let Some(file) = self.file.take() {
             file.compare("GrpHdr", &mut self.out);
         }
-        self.out.sort_by_key(|m| m.line);
         self.out
     }
 }
@@ -356,7 +368,7 @@ fn set(totals: &mut Option<Totals>, f: impl FnOnce(&mut Totals)) {
     }
 }
 
-fn warning(text: String, line: u32, hint: &str) -> Message {
+pub(crate) fn warning(text: String, line: u32, hint: &str) -> Message {
     Message {
         severity: Severity::Warning,
         text,
@@ -367,14 +379,14 @@ fn warning(text: String, line: u32, hint: &str) -> Message {
 }
 
 /// Maps byte offsets to 1-based line numbers for offsets visited in order.
-struct LineCounter<'a> {
+pub(crate) struct LineCounter<'a> {
     bytes: &'a [u8],
     pos: usize,
     line: u32,
 }
 
 impl<'a> LineCounter<'a> {
-    fn new(text: &'a str) -> Self {
+    pub(crate) fn new(text: &'a str) -> Self {
         LineCounter {
             bytes: text.as_bytes(),
             pos: 0,
@@ -382,7 +394,7 @@ impl<'a> LineCounter<'a> {
         }
     }
 
-    fn at(&mut self, pos: usize) -> u32 {
+    pub(crate) fn at(&mut self, pos: usize) -> u32 {
         let pos = pos.min(self.bytes.len());
         if pos > self.pos {
             self.line += self.bytes[self.pos..pos]
@@ -608,6 +620,8 @@ mod tests {
         assert_eq!(show("30.5"), "30.50");
         assert_eq!(show("7"), "7.00");
         assert_eq!(show("0.125"), "0.125");
+        assert_eq!(Amount(-3_050_000).display_signed(), "-30.50");
+        assert_eq!(Amount(3_050_000).display_signed(), "30.50");
         assert!(Amount::parse("1,5").is_none());
     }
 

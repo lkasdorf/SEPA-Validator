@@ -2,7 +2,7 @@
   import { selectedResult } from "./stores";
   import { paymentSummary } from "./paymentSummary";
   import { exportTransactionsCsv } from "./export";
-  import { isDirectDebit } from "./types";
+  import { isDirectDebit, isStatement, signedAmount } from "./types";
   import { visibleRange } from "./virtualRows";
   import { filterIndices, searchIndex } from "./transactionFilter";
   import { sortIndices, type SortDir, type SortKey } from "./transactionSort";
@@ -17,6 +17,7 @@
   $: ready = !!$selectedResult && ps.path === $selectedResult.path && ps.state === "ready" && !!ps.data;
   $: rows = ready ? ps.data!.transactions : [];
   $: dd = ready ? isDirectDebit(ps.data!) : false;
+  $: stmt = ready ? isStatement(ps.data!) : false;
 
   // Sorting reorders all rows once per click; the search then keeps that
   // order. `order` holds the indices of the rows to show.
@@ -36,7 +37,8 @@
 
   $: columns = [
     { key: "index", label: "#" },
-    { key: "name", label: "Name" },
+    ...(stmt ? [{ key: "bookingDate", label: "Booking date" }] : []),
+    { key: "name", label: stmt ? "Counterparty" : "Name" },
     { key: "iban", label: "IBAN" },
     { key: "amount", label: "Amount", num: true },
     { key: "ustrd", label: "Remittance info" },
@@ -127,7 +129,7 @@
       </div>
       <table class:dd>
         <colgroup>
-          <col class="c-no" /><col class="c-name" /><col class="c-iban" /><col class="c-amt" /><col class="c-rmt" />
+          <col class="c-no" />{#if stmt}<col class="c-date" />{/if}<col class="c-name" /><col class="c-iban" /><col class="c-amt" /><col class="c-rmt" />
           {#if dd}<col class="c-mndt" /><col class="c-date" />{/if}
         </colgroup>
         <thead>
@@ -143,15 +145,16 @@
           </tr>
         </thead>
         <tbody>
-          {#if range.start > 0}<tr class="spacer" style="height: {range.start * ROW}px"><td colspan={dd ? 7 : 5}></td></tr>{/if}
+          {#if range.start > 0}<tr class="spacer" style="height: {range.start * ROW}px"><td colspan={columns.length}></td></tr>{/if}
           {#each order.slice(range.start, range.end) as i (i)}
             {@const t = rows[i]}
             {@const rmt = t.ustrd?.replace(/\r?\n/g, " ")}
             <tr style="height: {ROW}px">
               <td>{i + 1}</td>
+              {#if stmt}<td class="mono">{t.bookingDate ?? "—"}</td>{/if}
               <td title={t.name ?? ""}>{t.name ?? "—"}</td>
               <td class="mono">{t.iban ?? "—"}<IbanCheckButton iban={t.iban} /></td>
-              <td class="mono num">{t.amount != null ? `${t.amount} ${t.currency ?? ""}` : "—"}</td>
+              <td class="mono num">{t.amount != null ? `${signedAmount(t)} ${t.currency ?? ""}` : "—"}</td>
               <td title={rmt ?? ""} class:missing={rmt == null}>{rmt ?? "—"}</td>
               {#if dd}
                 <td class="mono" title={t.mandateId ?? ""}>{t.mandateId ?? "—"}</td>
@@ -159,7 +162,7 @@
               {/if}
             </tr>
           {/each}
-          {#if range.end < order.length}<tr class="spacer" style="height: {(order.length - range.end) * ROW}px"><td colspan={dd ? 7 : 5}></td></tr>{/if}
+          {#if range.end < order.length}<tr class="spacer" style="height: {(order.length - range.end) * ROW}px"><td colspan={columns.length}></td></tr>{/if}
         </tbody>
       </table>
       {#if filtered && order.length === 0}

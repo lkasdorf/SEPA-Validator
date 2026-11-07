@@ -1,6 +1,6 @@
 import type { RemittanceEntry } from "./types";
 
-export type SortKey = "index" | "name" | "iban" | "amount" | "ustrd" | "mandateId" | "signatureDate";
+export type SortKey = "index" | "name" | "iban" | "amount" | "ustrd" | "mandateId" | "signatureDate" | "bookingDate";
 export type SortDir = "asc" | "desc";
 
 const collator = new Intl.Collator("de", { sensitivity: "base", numeric: true });
@@ -8,7 +8,8 @@ const collator = new Intl.Collator("de", { sensitivity: "base", numeric: true })
 function value(t: RemittanceEntry, key: Exclude<SortKey, "index">): string | number | null {
   if (key === "amount") {
     const n = t.amount != null ? Number(t.amount) : NaN;
-    return Number.isFinite(n) ? n : null;
+    if (!Number.isFinite(n)) return null;
+    return t.creditDebit === "DBIT" ? -n : n;
   }
   const v = t[key];
   return v == null || v === "" ? null : v;

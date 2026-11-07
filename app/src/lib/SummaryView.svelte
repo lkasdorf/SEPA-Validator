@@ -2,6 +2,8 @@
   import { selectedResult } from "./stores";
   import { paymentSummary } from "./paymentSummary";
   import IbanCheckButton from "./IbanCheckButton.svelte";
+  import { isStatement } from "./types";
+  import { balanceLabel, kindLabel } from "./statementLabels";
   $: ps = $paymentSummary;
 </script>
 
@@ -31,6 +33,37 @@
         <dt>BIC</dt><dd class="mono">{data.debtor.bic ?? "—"}</dd>
       </dl>
     {/if}
+    {#if isStatement(data)}
+      {#each data.statements ?? [] as s, i}
+        <h3>{kindLabel(s.kind)} {data.statements && data.statements.length > 1 ? i + 1 : ""} · {data.messageType}</h3>
+        <dl class="cdtr">
+          <dt>Account</dt><dd class="mono">{s.iban ?? "—"}<IbanCheckButton iban={s.iban} />{s.currency ? ` · ${s.currency}` : ""}</dd>
+          {#if s.owner}<dt>Owner</dt><dd>{s.owner}</dd>{/if}
+          {#if s.bic}<dt>Bank (BIC)</dt><dd class="mono">{s.bic}</dd>{/if}
+          <dt>Id</dt><dd class="mono">{s.id ?? "—"}</dd>
+          <dt>Sequence no.</dt><dd class="mono">{s.electronicSeqNb ?? "—"}{s.legalSeqNb ? ` (legal ${s.legalSeqNb})` : ""}</dd>
+          <dt>Period</dt><dd class="mono">{s.from ?? "—"} – {s.to ?? "—"}</dd>
+          <dt>Entries</dt>
+          <dd class="mono">{s.entryCount} · credits {s.creditCount} = {s.creditSum} · debits {s.debitCount} = {s.debitCount > 0 ? "-" : ""}{s.debitSum}</dd>
+        </dl>
+        {#if s.balances.length > 0}
+          <table>
+            <thead><tr><th>Balance</th><th>Amount</th><th>Date</th></tr></thead>
+            <tbody>
+              {#each s.balances as b}
+                <tr>
+                  <td title={balanceLabel(b.code)}>{b.code ?? "—"}</td>
+                  <td>{b.amount ?? "—"} {b.currency ?? ""}</td>
+                  <td>{b.date ?? "—"}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {/if}
+      {:else}
+        <p class="muted">No statement blocks in this file.</p>
+      {/each}
+    {:else}
     <h3>
       {data.pmtInfCount} PmtInf {data.pmtInfCount === 1 ? "block" : "blocks"}{data.messageType
         ? ` · ${data.messageType}`
@@ -60,6 +93,7 @@
           {/each}
         </tbody>
       </table>
+    {/if}
     {/if}
   {:else}
     <p class="muted">Loading…</p>

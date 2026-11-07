@@ -6,6 +6,7 @@ mod payments;
 mod plausibility;
 mod scanner;
 mod schema;
+mod statements;
 mod validator;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

@@ -76,6 +76,49 @@ export interface RemittanceEntry {
   currency: string | null;
   mandateId: string | null;
   signatureDate: string | null;
+  /** Statement entries (camt) only. */
+  bookingDate?: string | null;
+  /** Statement entries (camt) only: "CRDT" or "DBIT". */
+  creditDebit?: string | null;
+}
+
+/** Amount as shown: debits of a statement get a minus sign. */
+export function signedAmount(t: RemittanceEntry): string | null {
+  if (t.amount == null) return null;
+  return t.creditDebit === "DBIT" ? `-${t.amount}` : t.amount;
+}
+
+/** One balance of a statement; `amount` is signed (negative for DBIT). */
+export interface BalanceSummary {
+  code: string | null;
+  amount: string | null;
+  currency: string | null;
+  date: string | null;
+}
+
+/** One camt.052 report, camt.053 statement or camt.054 notification block. */
+export interface StatementSummary {
+  kind: string;
+  id: string | null;
+  electronicSeqNb: string | null;
+  legalSeqNb: string | null;
+  from: string | null;
+  to: string | null;
+  iban: string | null;
+  currency: string | null;
+  owner: string | null;
+  bic: string | null;
+  balances: BalanceSummary[];
+  entryCount: number;
+  creditCount: number;
+  creditSum: string;
+  debitCount: number;
+  debitSum: string;
+}
+
+/** camt.052/053/054: the file holds account entries, not payment orders. */
+export function isStatement(s: PaymentSummary): boolean {
+  return (s.statements?.length ?? 0) > 0 || s.messageType.startsWith("camt.05");
 }
 
 /** pain.008 (or any file whose transactions carry a mandate). */
@@ -90,6 +133,8 @@ export interface PaymentSummary {
   debtor: Debtor | null;
   blocks: PmtInfSummary[];
   transactions: RemittanceEntry[];
+  /** camt statement blocks; empty for payment files. */
+  statements?: StatementSummary[];
 }
 
 export interface SchemaInfo {
