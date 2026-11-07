@@ -1,5 +1,6 @@
 mod commands;
 mod formatting;
+mod gvc;
 mod messages;
 mod model;
 mod payments;
@@ -37,6 +38,7 @@ pub fn run() {
             commands::save_formatted,
             commands::read_formatted,
             commands::read_payment_summary,
+            commands::gvc_status,
             commands::schema_status,
             commands::import_schemas,
             commands::open_schema_dir,

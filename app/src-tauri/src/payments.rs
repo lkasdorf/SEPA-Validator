@@ -77,6 +77,8 @@ pub struct RemittanceEntry {
     /// proprietary code as given ("NTRF+166").
     pub iso_tx_code: Option<String>,
     pub gvc: Option<String>,
+    /// Name of the GVC from the imported DK mapping table (set by the command).
+    pub gvc_text: Option<String>,
     pub prtry_tx_code: Option<String>,
     /// Statement entries (camt) only: further information for the details view.
     pub details: Vec<Detail>,

@@ -35,7 +35,8 @@
         <dt>Amount</dt><dd class="mono" class:debit={entry.creditDebit === "DBIT"}>{amount}</dd>
         <dt>Counterparty</dt><dd>{entry.name ?? "—"}</dd>
         <dt>IBAN</dt><dd class="mono">{entry.iban ?? "—"}<IbanCheckButton iban={entry.iban ?? null} /></dd>
-        <dt>GVC</dt><dd class="mono">{entry.gvc ?? "—"}{entry.prtryTxCode && entry.prtryTxCode !== entry.gvc ? ` (${entry.prtryTxCode})` : ""}</dd>
+        <dt>GVC</dt>
+        <dd><span class="mono">{entry.gvc ?? "—"}{entry.prtryTxCode && entry.prtryTxCode !== entry.gvc ? ` (${entry.prtryTxCode})` : ""}</span>{#if entry.gvcText} · {entry.gvcText}{/if}</dd>
         <dt>ISO code</dt><dd class="mono">{entry.isoTxCode ?? "—"}</dd>
         <dt>Remittance info</dt><dd class="pre">{entry.ustrd ?? "—"}</dd>
         {#each entry.details ?? [] as d}
