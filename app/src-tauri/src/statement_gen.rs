@@ -166,8 +166,16 @@ pub(crate) fn parse_payment(xml: &str, today: &str) -> Result<Payment, Vec<Strin
                     }
                 }
             }
-            Ok(Event::Text(t)) => {
-                let Ok(v) = t.unescape() else { continue };
+            Ok(ev @ (Event::Text(_) | Event::CData(_))) => {
+                // CDATA is literal text (`<![CDATA[A & B]]>`), not escaped.
+                let v: String = match &ev {
+                    Event::Text(t) => match t.unescape() {
+                        Ok(v) => v.into_owned(),
+                        Err(_) => continue,
+                    },
+                    Event::CData(c) => String::from_utf8_lossy(c).into_owned(),
+                    _ => continue,
+                };
                 let v = v.trim();
                 if v.is_empty() {
                     continue;
@@ -408,7 +416,6 @@ fn account_tags(ibans: &[&str]) -> Vec<String> {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatementPreview {
-    pub kind: String,
     pub accounts: u32,
     pub days: u32,
     pub statements: u32,
@@ -463,7 +470,6 @@ pub(crate) fn generate(
 
 pub(crate) fn preview(xml: &str, today: &str) -> StatementPreview {
     let empty = |problems| StatementPreview {
-        kind: String::new(),
         accounts: 0,
         days: 0,
         statements: 0,
@@ -481,11 +487,6 @@ pub(crate) fn preview(xml: &str, today: &str) -> StatementPreview {
         .collect();
     let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
     StatementPreview {
-        kind: match p.kind {
-            Kind::CreditTransfer => "pain.001",
-            Kind::DirectDebit => "pain.008",
-        }
-        .into(),
         accounts: count(groups.len()),
         days: count(dates.len()),
         statements: count(groups.iter().map(|(_, d)| d.len()).sum()),
@@ -659,13 +660,16 @@ fn render(d: &Day) -> (String, Amount) {
     w.open("BkToCstmrStmt");
     w.open("GrpHdr");
     let stamp = d.now.replace(['-', ':'], "");
+    // An end-of-day statement can't be created before its day is over:
+    // a future booking day gets that day's end. `now` is UTC, hence the Z.
+    let created = format!("{}Z", d.now.max(&format!("{}T23:59:59", d.date)));
     w.leaf("MsgId", &format!("SYNTH-{stamp}-{tag}-{:03}", d.seq));
-    w.leaf("CreDtTm", d.now);
+    w.leaf("CreDtTm", &created);
     w.close("GrpHdr");
     w.open("Stmt");
     w.leaf("Id", &format!("SYNTH-{day}-{tag}-{:03}", d.seq));
     w.leaf("ElctrncSeqNb", &d.seq.to_string());
-    w.leaf("CreDtTm", d.now);
+    w.leaf("CreDtTm", &created);
     w.open("FrToDt");
     w.leaf("FrDtTm", &format!("{}T00:00:00", d.date));
     w.leaf("ToDtTm", &format!("{}T23:59:59", d.date));
@@ -1187,6 +1191,48 @@ mod gen_tests {
     }
 
     #[test]
+    fn cdata_text_is_read() {
+        let xml = pain001(
+            NS_001_03,
+            &[ct_block(
+                "P1",
+                OWN_A,
+                "2026-12-01",
+                "",
+                "SEPA",
+                &[tx("E1", "1.00")],
+            )],
+        )
+        .replace("<Nm>Supplier One</Nm>", "<Nm><![CDATA[A & B <Test>]]></Nm>")
+        .replace(">1.00</InstdAmt>", "><![CDATA[12.34]]></InstdAmt>");
+        let p = parse_payment(&xml, TODAY).unwrap();
+        let t = &p.blocks[0].txs[0];
+        assert_eq!(t.name.as_deref(), Some("A & B <Test>"));
+        assert_eq!(t.amount, eur("12.34"));
+        let g = gen(&xml, "10000.00");
+        assert_eq!(texts(&g[0].xml, &["Cdtr", "Pty", "Nm"]), ["A & B <Test>"]);
+    }
+
+    #[test]
+    fn creation_time_is_utc_and_not_before_the_period() {
+        // Generated at 09:30 on 2026-11-07 for bookings on 12-01 and 12-03:
+        // an end-of-day statement is created when its day is over.
+        let g = gen(&days_chain_xml(), "10000.00");
+        for (g, day) in g.iter().zip(["2026-12-01", "2026-12-03"]) {
+            let expected = format!("{day}T23:59:59Z");
+            assert_eq!(texts(&g.xml, &["GrpHdr", "CreDtTm"]), [expected.as_str()]);
+            assert_eq!(texts(&g.xml, &["Stmt", "CreDtTm"]), [expected.as_str()]);
+        }
+        // Generated after the booking day ended: the actual time, in UTC.
+        let xml = days_chain_xml();
+        let late = generate(&xml, SRC, eur("1.00"), "2026-11-07", "2026-12-04T08:00:00").unwrap();
+        assert_eq!(
+            texts(&late[0].xml, &["Stmt", "CreDtTm"]),
+            ["2026-12-04T08:00:00Z"]
+        );
+    }
+
+    #[test]
     fn synthetic_markers() {
         let g = gen(&days_chain_xml(), "10000.00");
         for x in g.iter().map(|g| &g.xml) {
@@ -1266,7 +1312,6 @@ mod gen_tests {
         assert_eq!(
             preview(&xml, TODAY),
             StatementPreview {
-                kind: "pain.001".into(),
                 accounts: 2,
                 days: 3,
                 statements: 4,
@@ -1274,7 +1319,7 @@ mod gen_tests {
                 problems: vec![],
             }
         );
-        assert_eq!(preview(&direct_debit_xml("CORE"), TODAY).kind, "pain.008");
+        assert_eq!(preview(&direct_debit_xml("CORE"), TODAY).transactions, 2);
         let usd = pain001(
             NS_001_03,
             &[ct_block(

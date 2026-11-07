@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { canGenerate, isPaymentFile, normalizeOpening, previewLine } from "./statementGen";
-import type { StatementPreview } from "./types";
+import { canGenerate, isPaymentFile, normalizeOpening, previewLine, statementSchemaMissing } from "./statementGen";
+import type { SchemaInfo, StatementPreview } from "./types";
 
 describe("isPaymentFile", () => {
   it("accepts pain.001 and pain.008, including the Swiss variants", () => {
@@ -32,13 +32,29 @@ describe("normalizeOpening", () => {
 });
 
 const preview = (p: Partial<StatementPreview>): StatementPreview => ({
-  kind: "pain.001",
   accounts: 1,
   days: 1,
   statements: 1,
   transactions: 1,
   problems: [],
   ...p,
+});
+
+describe("statementSchemaMissing", () => {
+  const row = (filename: string, present: boolean): SchemaInfo => ({
+    namespace: `urn:iso:std:iso:20022:tech:xsd:${filename.replace(/\.xsd$/, "")}`,
+    filename,
+    present,
+  });
+
+  it("is true when camt.053.001.08.xsd is listed but not imported", () => {
+    expect(statementSchemaMissing([row("pain.001.001.09.xsd", true), row("camt.053.001.08.xsd", false)])).toBe(true);
+  });
+
+  it("is false when it is imported, or when the status is unknown", () => {
+    expect(statementSchemaMissing([row("camt.053.001.08.xsd", true)])).toBe(false);
+    expect(statementSchemaMissing([])).toBe(false);
+  });
 });
 
 describe("canGenerate", () => {
