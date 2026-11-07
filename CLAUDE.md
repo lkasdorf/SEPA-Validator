@@ -43,9 +43,10 @@ Tauri v2 backend (Rust, `src-tauri/`) + Svelte 5/TypeScript/Vite frontend (`src/
 
 - **Backend modules** (`src-tauri/src/`):
   - `model`: serde DTOs `ValidationResult`/`Status`/`Message` (with an optional `hint`).
-  - `schema`: namespace→XSD filename map plus `SWISS_VARIANTS` for SPS schemas that share an ISO namespace, picked via `resolve(ns, swiss)`.
+  - `schema`: namespace→XSD filename map plus `VARIANTS` (Swiss SPS, DK foreign AXZ, DK urgent euro CCU) for schemas that share the pain.001.001.09 namespace, picked via `resolve(ns, variant)`.
   - `formatting`: the meaning-preserving pretty-printer used for both the viewer and validation, so line numbers match. Leaf text stays verbatim; it rejects DOCTYPE, unclosed elements and non-UTF-8.
-  - `validator`: `detect_namespace`, `is_swiss`, and `Validator`.
+  - `validator`: `detect_namespace`, `detect_variant` (Swiss by debtor IBAN, else the DK subset from currency/ChrgBr/SvcLvl), and `Validator`.
+    - If the guessed DK subset fails but another DK subset of the namespace accepts the file, that one is used (`dk_candidates`).
     - Strict parse via `xmlCtxtReadMemory` (no recover, NONET, BIG_LINES).
     - `xmlSchemaValidateDoc` called directly, because the crate's wrapper panics.
     - A per-run schema cache, loaded from `app_data_dir()/schemas/`.

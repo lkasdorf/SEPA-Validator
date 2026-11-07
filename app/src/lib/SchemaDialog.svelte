@@ -75,7 +75,7 @@
       <strong>Schemas</strong>
       <button class="x" on:click={close} aria-label="Close">✕</button>
     </header>
-    <p class="hint">The XSDs are not bundled. Download them from the official source (ebics.de for DK/GBIC, six-group.com for the Swiss Payment Standards, iso20022.org for the ISO schemas) and import them here as ZIP or XSD. Swiss pain.001 files (debtor IBAN CH/LI) are checked against the Swiss schema.</p>
+    <p class="hint">The XSDs are not bundled. Download them from the official source (ebics.de for DK/GBIC, six-group.com for the Swiss Payment Standards, iso20022.org for the ISO schemas) and import them here as ZIP or XSD. pain.001.001.09 files are checked against the matching subset: Swiss (debtor IBAN CH/LI), DK foreign payment (AXZ: foreign currency, DEBT/CRED, NURG…), DK urgent euro transfer (CCU: URGP, SHAR) or else DK SEPA. If that guess fails but another DK subset accepts the file, that one is used. The log shows which XSD was used.</p>
     <div class="tablewrap">
       <table>
         <thead><tr><th>Namespace</th><th>File</th><th>Status</th></tr></thead>

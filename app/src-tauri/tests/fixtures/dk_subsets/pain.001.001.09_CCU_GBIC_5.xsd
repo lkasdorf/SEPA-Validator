@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Minimal, self-written TEST schema (not the DK/GBIC XSD, which is not
+  redistributable). It only borrows the pain.001.001.09 namespace and the file
+  name of one DK subset so the validator's fallback between subsets can be
+  tested: rejects every real file.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:iso:std:iso:20022:tech:xsd:pain.001.001.09"
+           elementFormDefault="qualified">
+  <xs:element name="Document">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="CstmrCdtTrfInitn">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="NeverPresent"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

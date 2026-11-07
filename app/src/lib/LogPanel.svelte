@@ -1,6 +1,7 @@
 <script lang="ts">
   import { selectedResult, logFilter, search, jumpToLine } from "./stores";
   import { statusLabel } from "./types";
+  import { schemaLabel } from "./schemaLabel";
   import type { Message } from "./types";
 
   $: msgs = filterMsgs($selectedResult?.messages ?? [], $logFilter, $search);
@@ -23,7 +24,13 @@
   <header>
     {#if $selectedResult}
       <div class="status {$selectedResult.status}">{statusLabel($selectedResult)}</div>
-      <div class="meta mono">{$selectedResult.schema || "—"}</div>
+      <div class="meta">
+        {#if $selectedResult.schema}
+          Checked against <span class="mono">{$selectedResult.schema}</span>{#if schemaLabel($selectedResult.schema)}&ensp;·&ensp;{schemaLabel($selectedResult.schema)}{/if}
+        {:else}
+          No schema
+        {/if}
+      </div>
     {:else}
       <div class="meta">Select a file to see its log.</div>
     {/if}
