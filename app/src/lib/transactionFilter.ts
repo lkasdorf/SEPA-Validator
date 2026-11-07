@@ -4,7 +4,7 @@ import type { RemittanceEntry } from "./types";
  *  mandate ID and (statements) GVC, ISO transaction code and entry details. Built once per file so filtering on each keystroke stays cheap. */
 export function searchIndex(transactions: RemittanceEntry[]): string[] {
   return transactions.map((t) =>
-    [t.name, t.iban, t.ustrd, t.mandateId, t.gvc, t.isoTxCode, ...(t.details ?? []).map((d) => d.value)].filter((v) => v != null).join("\u0000").toLowerCase()
+    [t.name, t.iban, t.ustrd, t.mandateId, t.gvc, t.gvcText, t.isoTxCode, ...(t.details ?? []).map((d) => d.value)].filter((v) => v != null).join("\u0000").toLowerCase()
   );
 }
 

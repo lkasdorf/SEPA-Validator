@@ -84,6 +84,8 @@ export interface RemittanceEntry {
   isoTxCode?: string | null;
   /** Statement entries (camt) only: DK business transaction code (GVC), e.g. "166". */
   gvc?: string | null;
+  /** Name of the GVC from the imported DK mapping table, e.g. "SEPA Credit Transfer (Einzelbuchung-Haben)". */
+  gvcText?: string | null;
   /** Statement entries (camt) only: proprietary code as given, e.g. "NTRF+166". */
   prtryTxCode?: string | null;
   /** Statement entries (camt) only: further labelled information. */
@@ -151,7 +153,15 @@ export interface SchemaInfo {
   present: boolean;
 }
 
+/** The imported DK GVC mapping table. */
+export interface GvcInfo {
+  source: string;
+  codes: number;
+}
+
 export interface ImportResult {
   imported: number;
   skipped: string[];
+  /** Number of GVCs if a DK mapping table was imported. */
+  gvcCodes?: number | null;
 }

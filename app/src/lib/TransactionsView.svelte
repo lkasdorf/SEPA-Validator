@@ -174,7 +174,9 @@
               <td class="mono">{t.iban ?? "—"}<IbanCheckButton iban={t.iban} /></td>
               <td class="mono num">{t.amount != null ? `${signedAmount(t)} ${t.currency ?? ""}` : "—"}</td>
               {#if stmt}
-                <td class="mono" title={t.prtryTxCode ?? ""}>{t.gvc ?? t.prtryTxCode ?? "—"}</td>
+                <td title={[t.gvc, t.gvcText, t.prtryTxCode && t.prtryTxCode !== t.gvc ? `(${t.prtryTxCode})` : ""].filter(Boolean).join(" ")}>
+                  <span class="mono">{t.gvc ?? t.prtryTxCode ?? "—"}</span>{#if t.gvcText}<span class="gvc-text"> {t.gvcText}</span>{/if}
+                </td>
                 <td class="mono" title={t.isoTxCode ?? ""}>{t.isoTxCode ?? "—"}</td>
               {/if}
               <td title={rmt ?? ""} class:missing={rmt == null}>{rmt ?? "—"}</td>
@@ -221,7 +223,8 @@
   .c-name { width: 22%; }
   .c-iban { width: 210px; }
   .c-amt { width: 120px; }
-  .c-gvc { width: 64px; }
+  .c-gvc { width: 280px; }
+  .gvc-text { color: var(--muted); margin-left: 0.5em; }
   .c-iso { width: 136px; }
   .c-mndt { width: 160px; }
   .c-date { width: 104px; }

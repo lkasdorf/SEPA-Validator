@@ -223,9 +223,50 @@ pub fn read_formatted(path: String) -> Result<String, String> {
 }
 
 /// Extract the per-file SEPA payment summary (PmtInf stats + Ustrd list).
+/// Statement entries get the GVC's name when the DK mapping table is imported.
 #[tauri::command]
-pub fn read_payment_summary(path: String) -> Result<crate::payments::PaymentSummary, String> {
-    crate::payments::extract_payment_summary(std::path::Path::new(&path))
+pub fn read_payment_summary(
+    app: AppHandle,
+    path: String,
+) -> Result<crate::payments::PaymentSummary, String> {
+    let mut summary = crate::payments::extract_payment_summary(std::path::Path::new(&path))?;
+    if summary.transactions.iter().any(|t| t.gvc.is_some()) {
+        if let Some(table) = schema_dir(&app)
+            .ok()
+            .and_then(|d| crate::gvc::GvcTable::load(&d))
+        {
+            add_gvc_names(&mut summary.transactions, &table);
+        }
+    }
+    Ok(summary)
+}
+
+/// Fills `gvc_text` from the mapping table.
+fn add_gvc_names(rows: &mut [crate::payments::RemittanceEntry], table: &crate::gvc::GvcTable) {
+    for t in rows {
+        if let Some(gvc) = &t.gvc {
+            t.gvc_text = table
+                .name(gvc, t.iso_tx_code.as_deref(), t.credit_debit.as_deref())
+                .map(str::to_string);
+        }
+    }
+}
+
+/// The imported GVC mapping table, if any: where it came from and how many codes.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GvcInfo {
+    pub source: String,
+    pub codes: u32,
+}
+
+#[tauri::command]
+pub fn gvc_status(app: AppHandle) -> Result<Option<GvcInfo>, String> {
+    let dir = schema_dir(&app)?;
+    Ok(crate::gvc::GvcTable::load(&dir).map(|t| GvcInfo {
+        source: t.source.clone(),
+        codes: t.codes() as u32,
+    }))
 }
 
 #[derive(Serialize)]
@@ -241,6 +282,8 @@ pub struct SchemaInfo {
 pub struct ImportResult {
     pub imported: u32,
     pub skipped: Vec<String>,
+    /// Number of GVCs if a DK mapping table (.xlsx) was imported.
+    pub gvc_codes: Option<u32>,
 }
 
 /// Return the known schemas with a present/absent flag for the schema dir.
@@ -264,6 +307,20 @@ fn is_xsd(p: &Path) -> bool {
         .unwrap_or(false)
 }
 
+fn is_xlsx(p: &Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("xlsx"))
+}
+
+/// Converts a DK GVC mapping workbook and stores it in `dest`; the number of
+/// GVCs on success.
+fn import_gvc_table(table: Result<crate::gvc::GvcTable, String>, dest: &Path) -> Option<u32> {
+    let table = table.ok()?;
+    table.save(dest).ok()?;
+    Some(table.codes() as u32)
+}
+
 fn is_zip(p: &Path) -> bool {
     p.extension()
         .and_then(|e| e.to_str())
@@ -272,9 +329,10 @@ fn is_zip(p: &Path) -> bool {
 }
 
 /// Extract every `.xsd` entry of a zip into `dest`, flattened to its basename
-/// (so archive subfolders and any `../` are neutralized). Returns
-/// (imported_count, skipped). On open/read failure the zip path is added to skipped.
-fn extract_zip_xsds(zip_path: &Path, dest: &Path) -> (u32, Vec<String>) {
+/// (so archive subfolders and any `../` are neutralized), and convert a DK GVC
+/// mapping workbook (`.xlsx`) if the zip has one. Returns (imported_count,
+/// skipped). On open/read failure the zip path is added to skipped.
+fn extract_zip_xsds(zip_path: &Path, dest: &Path, gvc: &mut Option<u32>) -> (u32, Vec<String>) {
     let mut imported = 0u32;
     let mut skipped: Vec<String> = Vec::new();
     let file = match std::fs::File::open(zip_path) {
@@ -301,6 +359,13 @@ fn extract_zip_xsds(zip_path: &Path, dest: &Path) -> (u32, Vec<String>) {
         }
         let name = entry.name().to_string();
         let base = name.rsplit(['/', '\\']).next().unwrap_or("").to_string();
+        if base.to_lowercase().ends_with(".xlsx") {
+            if let Some(bytes) = crate::gvc::read_capped(&mut entry) {
+                let found = import_gvc_table(crate::gvc::parse_workbook(&bytes, &base), dest);
+                *gvc = found.or(*gvc);
+            }
+            continue;
+        }
         if base.is_empty() || !base.to_lowercase().ends_with(".xsd") {
             continue;
         }
@@ -373,6 +438,7 @@ fn write_capped(src: &mut impl std::io::Read, target: &Path) -> std::io::Result<
 pub fn copy_xsds(paths: &[String], dest: &Path) -> ImportResult {
     let mut imported = 0u32;
     let mut skipped: Vec<String> = Vec::new();
+    let mut gvc_codes: Option<u32> = None;
     for p in paths {
         let path = Path::new(p);
         if path.is_dir() {
@@ -382,22 +448,36 @@ pub fn copy_xsds(paths: &[String], dest: &Path) -> ImportResult {
                         let ep = entry.path();
                         if ep.is_file() && is_xsd(&ep) {
                             copy_one(&ep, dest, &mut imported, &mut skipped);
+                        } else if ep.is_file() && is_xlsx(&ep) {
+                            // Other workbooks in the folder are simply not GVC tables.
+                            let found =
+                                import_gvc_table(crate::gvc::parse_workbook_file(&ep), dest);
+                            gvc_codes = found.or(gvc_codes);
                         }
                     }
                 }
                 Err(_) => skipped.push(p.clone()),
             }
         } else if path.is_file() && is_zip(path) {
-            let (imp, mut skp) = extract_zip_xsds(path, dest);
+            let (imp, mut skp) = extract_zip_xsds(path, dest, &mut gvc_codes);
             imported += imp;
             skipped.append(&mut skp);
         } else if path.is_file() && is_xsd(path) {
             copy_one(path, dest, &mut imported, &mut skipped);
+        } else if path.is_file() && is_xlsx(path) {
+            match import_gvc_table(crate::gvc::parse_workbook_file(path), dest) {
+                Some(n) => gvc_codes = Some(n),
+                None => skipped.push(p.clone()),
+            }
         } else {
             skipped.push(p.clone());
         }
     }
-    ImportResult { imported, skipped }
+    ImportResult {
+        imported,
+        skipped,
+        gvc_codes,
+    }
 }
 
 /// Copy selected `.xsd` files/folders into the schema dir.
@@ -482,6 +562,87 @@ fn explorer() -> std::process::Command {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_gvc_workbook_is_imported_from_xlsx_zip_and_folder() {
+        let bytes = crate::gvc::tests::workbook(&[(
+            "166",
+            "SEPA Credit Transfer (Einzelbuchung-Haben)",
+            "C",
+            "PMNT",
+            "RCDT",
+            "ESCT",
+        )]);
+        let root = std::env::temp_dir().join("sepa_gvc_import");
+        let _ = std::fs::remove_dir_all(&root);
+        let (src, dest) = (root.join("src"), root.join("dest"));
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::create_dir_all(&dest).unwrap();
+
+        // Plain .xlsx
+        let xlsx = src.join("Anhang1.xlsx");
+        std::fs::write(&xlsx, &bytes).unwrap();
+        let r = copy_xsds(&[xlsx.display().to_string()], &dest);
+        assert_eq!((r.imported, r.gvc_codes), (0, Some(1)));
+        let t = crate::gvc::GvcTable::load(&dest).unwrap();
+        assert_eq!(t.source, "Anhang1.xlsx");
+        std::fs::remove_file(dest.join(crate::gvc::FILE_NAME)).unwrap();
+
+        // Inside the ZIP from ebics.de
+        let zip_path = src.join("Mapping.zip");
+        {
+            let f = std::fs::File::create(&zip_path).unwrap();
+            let mut zw = zip::ZipWriter::new(f);
+            let opts = zip::write::SimpleFileOptions::default();
+            zw.start_file("Mapping/Anhang1.xlsx", opts).unwrap();
+            std::io::Write::write_all(&mut zw, &bytes).unwrap();
+            zw.finish().unwrap();
+        }
+        let r = copy_xsds(&[zip_path.display().to_string()], &dest);
+        assert_eq!(r.gvc_codes, Some(1));
+        std::fs::remove_file(dest.join(crate::gvc::FILE_NAME)).unwrap();
+
+        // A folder with other workbooks next to it: those are ignored, not skipped.
+        std::fs::write(src.join("other.xlsx"), b"not a workbook").unwrap();
+        let r = copy_xsds(&[src.display().to_string()], &dest);
+        assert_eq!(r.gvc_codes, Some(1));
+        assert!(r.skipped.is_empty(), "{:?}", r.skipped);
+
+        // A single .xlsx that is no GVC table is reported as skipped.
+        let r = copy_xsds(&[src.join("other.xlsx").display().to_string()], &dest);
+        assert_eq!((r.gvc_codes, r.skipped.len()), (None, 1));
+    }
+
+    #[test]
+    fn gvc_names_are_added_to_statement_rows() {
+        let bytes = crate::gvc::tests::workbook(&[
+            ("201", "Zahlungsauftrag", "D", "PMNT", "ICDT", "XBCT"),
+            (
+                "201",
+                "Rückgabe Zahlungseingang",
+                "D",
+                "PMNT",
+                "RCDT",
+                "XRTN",
+            ),
+        ]);
+        let table = crate::gvc::parse_workbook(&bytes, "t.xlsx").unwrap();
+        let mut rows = vec![
+            crate::payments::RemittanceEntry {
+                gvc: Some("201".into()),
+                iso_tx_code: Some("PMNT-RCDT-XRTN".into()),
+                credit_debit: Some("DBIT".into()),
+                ..Default::default()
+            },
+            crate::payments::RemittanceEntry::default(),
+        ];
+        add_gvc_names(&mut rows, &table);
+        assert_eq!(
+            rows[0].gvc_text.as_deref(),
+            Some("Rückgabe Zahlungseingang")
+        );
+        assert_eq!(rows[1].gvc_text, None);
+    }
+
     use super::*;
     use std::io::Write;
 
