@@ -6,6 +6,7 @@ mod payments;
 mod plausibility;
 mod scanner;
 mod schema;
+mod statement_gen;
 mod statements;
 mod validator;
 
