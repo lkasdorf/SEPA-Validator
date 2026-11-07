@@ -234,14 +234,19 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
                 }
                 stack.pop();
             }
-            Event::Text(t) => {
+            ev @ (Event::Text(_) | Event::CData(_)) => {
                 if current.is_none() {
                     continue;
                 }
                 let top = stack.last().map(String::as_str).unwrap_or("");
                 let parent = stack.iter().rev().nth(1).map(String::as_str).unwrap_or("");
                 let grand = stack.iter().rev().nth(2).map(String::as_str).unwrap_or("");
-                let text = t.unescape().map_err(|e| e.to_string())?.into_owned();
+                // CDATA is literal text (`<![CDATA[A & B]]>`), not escaped.
+                let text = match &ev {
+                    Event::Text(t) => t.unescape().map_err(|e| e.to_string())?.into_owned(),
+                    Event::CData(c) => String::from_utf8_lossy(c).into_owned(),
+                    _ => continue,
+                };
                 let b = current.as_mut().unwrap();
                 // Counterparty elements of the open transaction: (party, account).
                 let tx_party = current_tx.as_ref().map(|t| {
@@ -428,6 +433,33 @@ mod tests {
     </PmtInf>
   </CstmrCdtTrfInitn>
 </Document>"#;
+
+    #[test]
+    fn cdata_text_is_read() {
+        let xml = PAIN001
+            .replace(
+                "<Dbtr><Nm>Payer AG</Nm></Dbtr>",
+                "<Dbtr><Nm><![CDATA[Payer & Co <AG>]]></Nm></Dbtr>",
+            )
+            .replace(
+                "<Cdtr><Nm>Payee One</Nm></Cdtr>",
+                "<Cdtr><Nm><![CDATA[Payee <One> & Sons]]></Nm></Cdtr>",
+            )
+            .replace(">100.50</InstdAmt>", "><![CDATA[100.50]]></InstdAmt>")
+            .replace(
+                "<Ustrd>Invoice 1</Ustrd>",
+                "<Ustrd><![CDATA[Invoice <1> & more]]></Ustrd>",
+            );
+        let s = extract_payment_summary(&temp_xml("sepa_sum_cdata.xml", &xml)).unwrap();
+        assert_eq!(
+            s.debtor.and_then(|d| d.name).as_deref(),
+            Some("Payer & Co <AG>")
+        );
+        let t = &s.transactions[0];
+        assert_eq!(t.name.as_deref(), Some("Payee <One> & Sons"));
+        assert_eq!(t.amount.as_deref(), Some("100.50"));
+        assert_eq!(t.ustrd.as_deref(), Some("Invoice <1> & more"));
+    }
 
     #[test]
     fn pain001_blocks_transactions_and_no_pmtinf_creditor() {
