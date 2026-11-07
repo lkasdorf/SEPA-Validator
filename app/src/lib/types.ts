@@ -80,6 +80,14 @@ export interface RemittanceEntry {
   bookingDate?: string | null;
   /** Statement entries (camt) only: "CRDT" or "DBIT". */
   creditDebit?: string | null;
+  /** Statement entries (camt) only: ISO bank transaction code, e.g. "PMNT-RCDT-ESCT". */
+  isoTxCode?: string | null;
+  /** Statement entries (camt) only: DK business transaction code (GVC), e.g. "166". */
+  gvc?: string | null;
+  /** Statement entries (camt) only: proprietary code as given, e.g. "NTRF+166". */
+  prtryTxCode?: string | null;
+  /** Statement entries (camt) only: further labelled information. */
+  details?: { label: string; value: string }[];
 }
 
 /** Amount as shown: debits of a statement get a minus sign. */
