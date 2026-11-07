@@ -1,4 +1,4 @@
-import type { StatementPreview } from "./types";
+import type { SchemaInfo, StatementPreview } from "./types";
 
 /** True for credit transfer (pain.001) and direct debit (pain.008) files, the
  *  ones a bank statement can be generated from. Matches ISO and Swiss namespaces. */
@@ -15,6 +15,15 @@ export function normalizeOpening(input: string): string | null {
   if (!m) return null;
   const int = m[2].replace(/,/g, "").replace(/^0+(?=\d)/, "");
   return `${m[1]}${int}.${(m[3] ?? "").padEnd(2, "0")}`;
+}
+
+/** The schema the generated statements are validated against. */
+export const STATEMENT_XSD = "camt.053.001.08.xsd";
+
+/** True when the schema status lists the statement XSD as not imported, so
+ *  the new statements would show "schema missing". Unknown status: false. */
+export function statementSchemaMissing(rows: SchemaInfo[]): boolean {
+  return rows.some((r) => r.filename === STATEMENT_XSD && !r.present);
 }
 
 /** Whether the dialog may generate. Not while a validation run is active:

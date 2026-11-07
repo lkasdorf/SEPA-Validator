@@ -168,7 +168,6 @@ export interface ImportResult {
 
 /** What "Generate statement" would write for a payment file (Rust `StatementPreview`). */
 export interface StatementPreview {
-  kind: string;
   accounts: number;
   days: number;
   statements: number;

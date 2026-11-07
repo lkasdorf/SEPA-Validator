@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { previewStatements, generateStatements } from "./api";
+  import { previewStatements, generateStatements, schemaStatus } from "./api";
   import { progress, selectedResult, statementDialogOpen } from "./stores";
-  import { canGenerate, normalizeOpening, previewLine } from "./statementGen";
+  import { STATEMENT_XSD, canGenerate, normalizeOpening, previewLine, statementSchemaMissing } from "./statementGen";
   import { appendValidation } from "./validation";
   import type { StatementPreview } from "./types";
 
@@ -14,6 +14,7 @@
   let opening = "10000.00";
   let busy = false;
   let error = "";
+  let schemaMissing = false;
 
   $: normalized = normalizeOpening(opening);
   $: allowed = canGenerate({ preview, opening: normalized, busy, validating: $progress.running });
@@ -23,6 +24,11 @@
       preview = await previewStatements(source);
     } catch (e) {
       error = String(e);
+    }
+    try {
+      schemaMissing = statementSchemaMissing(await schemaStatus());
+    } catch {
+      // No status: skip the hint; validation reports a missing schema anyway.
     }
   });
 
@@ -74,6 +80,7 @@
     </label>
     {#if normalized === null}<p class="err">Enter an amount like 10000.00</p>{/if}
     <p class="hint">Saved next to the source file. All bank data in the statement is synthetic.</p>
+    {#if schemaMissing}<p class="warn">{STATEMENT_XSD} isn't imported yet, so the new statements will show "schema missing". Import it via Schemas… to validate them.</p>{/if}
     {#if $progress.running && !busy}<p class="hint">A validation is running; Generate is available when it has finished.</p>{/if}
     {#if error}<p class="err">{error}</p>{/if}
     <footer>
@@ -113,6 +120,7 @@
   .problems { font-size: 12px; color: var(--err); margin: 0 0 8px; padding-left: 18px; }
   .field { display: flex; align-items: center; gap: var(--sp-2); font-size: 13px; margin: 8px 0 2px; }
   .field input { width: 140px; text-align: right; }
+  .warn { font-size: 12px; color: var(--warn); margin: 4px 0; }
   .err { font-size: 12px; color: var(--err); margin: 4px 0; white-space: pre-line; }
   footer { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); }
   footer .close { margin-left: auto; }
