@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPaymentFile, normalizeOpening, previewLine } from "./statementGen";
+import { canGenerate, isPaymentFile, normalizeOpening, previewLine } from "./statementGen";
 import type { StatementPreview } from "./types";
 
 describe("isPaymentFile", () => {
@@ -39,6 +39,25 @@ const preview = (p: Partial<StatementPreview>): StatementPreview => ({
   transactions: 1,
   problems: [],
   ...p,
+});
+
+describe("canGenerate", () => {
+  const ready = { preview: preview({}), opening: "10000.00", busy: false, validating: false };
+
+  it("allows generating a bookable file with a valid opening balance", () => {
+    expect(canGenerate(ready)).toBe(true);
+  });
+
+  it("waits while a validation run is active, so appending can't cut it short", () => {
+    expect(canGenerate({ ...ready, validating: true })).toBe(false);
+  });
+
+  it("refuses without a preview, with problems, while busy or with a bad amount", () => {
+    expect(canGenerate({ ...ready, preview: null })).toBe(false);
+    expect(canGenerate({ ...ready, preview: preview({ problems: ["x"] }) })).toBe(false);
+    expect(canGenerate({ ...ready, busy: true })).toBe(false);
+    expect(canGenerate({ ...ready, opening: null })).toBe(false);
+  });
 });
 
 describe("previewLine", () => {

@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { previewStatements, generateStatements } from "./api";
-  import { selectedResult, statementDialogOpen } from "./stores";
-  import { normalizeOpening, previewLine } from "./statementGen";
+  import { progress, selectedResult, statementDialogOpen } from "./stores";
+  import { canGenerate, normalizeOpening, previewLine } from "./statementGen";
   import { appendValidation } from "./validation";
   import type { StatementPreview } from "./types";
 
@@ -16,7 +16,7 @@
   let error = "";
 
   $: normalized = normalizeOpening(opening);
-  $: canGenerate = !busy && preview !== null && preview.problems.length === 0 && normalized !== null;
+  $: allowed = canGenerate({ preview, opening: normalized, busy, validating: $progress.running });
 
   onMount(async () => {
     try {
@@ -31,7 +31,7 @@
   }
 
   async function generate() {
-    if (!canGenerate || normalized === null) return;
+    if (!allowed || normalized === null) return;
     busy = true;
     error = "";
     try {
@@ -74,9 +74,10 @@
     </label>
     {#if normalized === null}<p class="err">Enter an amount like 10000.00</p>{/if}
     <p class="hint">Saved next to the source file. All bank data in the statement is synthetic.</p>
+    {#if $progress.running && !busy}<p class="hint">A validation is running; Generate is available when it has finished.</p>{/if}
     {#if error}<p class="err">{error}</p>{/if}
     <footer>
-      <button class="btn btn--primary" on:click={generate} disabled={!canGenerate}>{busy ? "Generating…" : "Generate"}</button>
+      <button class="btn btn--primary" on:click={generate} disabled={!allowed}>{busy ? "Generating…" : "Generate"}</button>
       <button class="btn btn--ghost close" on:click={close}>Close</button>
     </footer>
   </div>

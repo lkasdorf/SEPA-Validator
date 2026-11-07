@@ -17,7 +17,18 @@ export function normalizeOpening(input: string): string | null {
   return `${m[1]}${int}.${(m[3] ?? "").padEnd(2, "0")}`;
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+/** Whether the dialog may generate. Not while a validation run is active:
+ *  appending the statements would supersede that run and cut it short. */
+export function canGenerate(s: {
+  preview: StatementPreview | null;
+  opening: string | null;
+  busy: boolean;
+  validating: boolean;
+}): boolean {
+  return !s.busy && !s.validating && s.opening !== null && s.preview !== null && s.preview.problems.length === 0;
+}
+
+const plural =(n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** One line for the dialog: what Generate would write. */
 export function previewLine(p: StatementPreview): string {
