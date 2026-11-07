@@ -72,6 +72,23 @@ pub struct RemittanceEntry {
     /// Statement entries (camt) only: booking date and "CRDT"/"DBIT".
     pub booking_date: Option<String>,
     pub credit_debit: Option<String>,
+    /// Statement entries (camt) only: ISO bank transaction code
+    /// ("PMNT-RCDT-ESCT"), DK business transaction code (GVC, "166") and the
+    /// proprietary code as given ("NTRF+166").
+    pub iso_tx_code: Option<String>,
+    pub gvc: Option<String>,
+    /// Name of the GVC from the imported DK mapping table (set by the command).
+    pub gvc_text: Option<String>,
+    pub prtry_tx_code: Option<String>,
+    /// Statement entries (camt) only: further information for the details view.
+    pub details: Vec<Detail>,
+}
+
+/// One labelled value of a statement entry ("Value date": "2026-11-02").
+#[derive(Debug, Clone, PartialEq, Serialize, Default)]
+pub struct Detail {
+    pub label: String,
+    pub value: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

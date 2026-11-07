@@ -5,6 +5,7 @@ import type {
   PaymentSummary,
   SchemaInfo,
   ImportResult,
+  GvcInfo,
   StatementPreview,
 } from "./types";
 
@@ -54,6 +55,10 @@ export type { ValidationResult };
 
 export function schemaStatus(): Promise<SchemaInfo[]> {
   return invoke<SchemaInfo[]>("schema_status");
+}
+
+export function gvcStatus(): Promise<GvcInfo | null> {
+  return invoke<GvcInfo | null>("gvc_status");
 }
 
 export function importSchemas(paths: string[]): Promise<ImportResult> {

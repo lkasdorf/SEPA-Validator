@@ -1,11 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
-  import { schemaStatus, importSchemas, openSchemaDir, openUrl } from "./api";
+  import { schemaStatus, importSchemas, openSchemaDir, openUrl, gvcStatus } from "./api";
   import { schemaDialogOpen } from "./stores";
-  import type { SchemaInfo } from "./types";
+  import type { GvcInfo, SchemaInfo } from "./types";
 
   let rows: SchemaInfo[] = [];
+  let gvc: GvcInfo | null = null;
   let busy = false;
   let note = "";
 
@@ -14,13 +15,14 @@
   async function refresh() {
     try {
       rows = await schemaStatus();
+      gvc = await gvcStatus();
     } catch {
       note = "Could not load status.";
     }
   }
 
   async function importFiles() {
-    const sel = await openDialog({ multiple: true, filters: [{ name: "XSD/ZIP", extensions: ["xsd", "zip"] }] });
+    const sel = await openDialog({ multiple: true, filters: [{ name: "XSD/ZIP/XLSX", extensions: ["xsd", "zip", "xlsx"] }] });
     if (!sel) return;
     await runImport(Array.isArray(sel) ? sel : [sel]);
   }
@@ -36,7 +38,7 @@
     note = "";
     try {
       const r = await importSchemas(paths);
-      note = `${r.imported} schema file(s) imported${r.skipped.length ? `, ${r.skipped.length} skipped` : ""}.`;
+      note = `${r.imported} schema file(s) imported${r.gvcCodes ? `, GVC table with ${r.gvcCodes} codes` : ""}${r.skipped.length ? `, ${r.skipped.length} skipped` : ""}.`;
       await refresh();
     } catch {
       note = "Import failed.";
@@ -90,11 +92,18 @@
         </tbody>
       </table>
     </div>
+    <p class="gvc">
+      {#if gvc}
+        <span class="ok">✓</span> GVC texts: {gvc.codes} codes from <span class="mono">{gvc.source}</span>
+      {:else}
+        <span class="missing">✗</span> GVC texts not imported: import the DK mapping table “Anhang 1 zu Anlage 3” (.xlsx or its ZIP from ebics.de) to see the name of each GVC in statements.
+      {/if}
+    </p>
     {#if note}<p class="note">{note}</p>{/if}
     <footer>
       <button class="btn btn--ghost" on:click={() => download(DOWNLOAD_URL_DE)}>Download DE…</button>
       <button class="btn btn--ghost" on:click={() => download(DOWNLOAD_URL_CH)}>Download CH…</button>
-      <button class="btn btn--primary" on:click={importFiles} disabled={busy}>XSD/ZIP files…</button>
+      <button class="btn btn--primary" on:click={importFiles} disabled={busy}>XSD/ZIP/XLSX files…</button>
       <button class="btn btn--primary" on:click={importFolder} disabled={busy}>Folder…</button>
       <button class="btn btn--ghost" on:click={openFolder}>Open folder</button>
       <button class="btn btn--ghost close" on:click={close}>Close</button>
@@ -131,8 +140,9 @@
   table { border-collapse: collapse; width: 100%; font-size: 12px; }
   th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); }
   td.ns { word-break: break-all; }
-  td.ok { color: var(--ok); }
-  td.missing { color: var(--err); }
+  td.ok, .gvc .ok { color: var(--ok); }
+  td.missing, .gvc .missing { color: var(--err); }
+  .gvc { font-size: 12px; margin: 8px 0 0; }
   .note { font-size: 12px; margin: 8px 0 0; }
   footer { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); }
   footer .close { margin-left: auto; }

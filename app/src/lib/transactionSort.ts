@@ -1,6 +1,6 @@
 import type { RemittanceEntry } from "./types";
 
-export type SortKey = "index" | "name" | "iban" | "amount" | "ustrd" | "mandateId" | "signatureDate" | "bookingDate";
+export type SortKey = "index" | "name" | "iban" | "amount" | "ustrd" | "mandateId" | "signatureDate" | "bookingDate" | "gvc" | "isoTxCode";
 export type SortDir = "asc" | "desc";
 
 const collator = new Intl.Collator("de", { sensitivity: "base", numeric: true });
