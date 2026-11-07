@@ -8,6 +8,11 @@
   import { sortIndices, type SortDir, type SortKey } from "./transactionSort";
   import { formatSums, sumAmounts } from "./amounts";
   import IbanCheckButton from "./IbanCheckButton.svelte";
+  import EntryDetails from "./EntryDetails.svelte";
+
+  // Statement entry whose details are open (index into rows).
+  let detailIndex: number | null = null;
+  $: if (ps.path !== shownPath) detailIndex = null;
 
   // Rows have a fixed height and only the visible window (plus overscan) is
   // rendered, so files with tens of thousands of transactions stay responsive.
@@ -41,6 +46,12 @@
     { key: "name", label: stmt ? "Counterparty" : "Name" },
     { key: "iban", label: "IBAN" },
     { key: "amount", label: "Amount", num: true },
+    ...(stmt
+      ? [
+          { key: "gvc", label: "GVC" },
+          { key: "isoTxCode", label: "ISO code" },
+        ]
+      : []),
     { key: "ustrd", label: "Remittance info" },
     ...(dd
       ? [
@@ -129,7 +140,7 @@
       </div>
       <table class:dd>
         <colgroup>
-          <col class="c-no" />{#if stmt}<col class="c-date" />{/if}<col class="c-name" /><col class="c-iban" /><col class="c-amt" /><col class="c-rmt" />
+          <col class="c-no" />{#if stmt}<col class="c-date" />{/if}<col class="c-name" /><col class="c-iban" /><col class="c-amt" />{#if stmt}<col class="c-gvc" /><col class="c-iso" />{/if}<col class="c-rmt" />
           {#if dd}<col class="c-mndt" /><col class="c-date" />{/if}
         </colgroup>
         <thead>
@@ -149,12 +160,23 @@
           {#each order.slice(range.start, range.end) as i (i)}
             {@const t = rows[i]}
             {@const rmt = t.ustrd?.replace(/\r?\n/g, " ")}
-            <tr style="height: {ROW}px">
+            <tr
+              style="height: {ROW}px"
+              class:clickable={stmt}
+              on:click={() => { if (stmt) detailIndex = i; }}
+              on:keydown={(e) => { if (stmt && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); detailIndex = i; } }}
+              tabindex={stmt ? 0 : -1}
+              title={stmt ? "Show all details of this entry" : undefined}
+            >
               <td>{i + 1}</td>
               {#if stmt}<td class="mono">{t.bookingDate ?? "—"}</td>{/if}
               <td title={t.name ?? ""}>{t.name ?? "—"}</td>
               <td class="mono">{t.iban ?? "—"}<IbanCheckButton iban={t.iban} /></td>
               <td class="mono num">{t.amount != null ? `${signedAmount(t)} ${t.currency ?? ""}` : "—"}</td>
+              {#if stmt}
+                <td class="mono" title={t.prtryTxCode ?? ""}>{t.gvc ?? t.prtryTxCode ?? "—"}</td>
+                <td class="mono" title={t.isoTxCode ?? ""}>{t.isoTxCode ?? "—"}</td>
+              {/if}
               <td title={rmt ?? ""} class:missing={rmt == null}>{rmt ?? "—"}</td>
               {#if dd}
                 <td class="mono" title={t.mandateId ?? ""}>{t.mandateId ?? "—"}</td>
@@ -165,6 +187,9 @@
           {#if range.end < order.length}<tr class="spacer" style="height: {(order.length - range.end) * ROW}px"><td colspan={columns.length}></td></tr>{/if}
         </tbody>
       </table>
+      {#if detailIndex !== null && rows[detailIndex]}
+        <EntryDetails entry={rows[detailIndex]} position={detailIndex + 1} on:close={() => (detailIndex = null)} />
+      {/if}
       {#if filtered && order.length === 0}
         <p class="muted">No transactions match “{query.trim()}”.</p>
       {/if}
@@ -196,6 +221,8 @@
   .c-name { width: 22%; }
   .c-iban { width: 210px; }
   .c-amt { width: 120px; }
+  .c-gvc { width: 64px; }
+  .c-iso { width: 136px; }
   .c-mndt { width: 160px; }
   .c-date { width: 104px; }
   th, td {
@@ -215,4 +242,6 @@
   .arrow { font-size: 9px; width: 9px; }
   td.missing { color: var(--muted); }
   tr.spacer td, tr.spacer { border: 0; padding: 0; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover, tr.clickable:focus-visible { background: color-mix(in srgb, var(--accent) 10%, transparent); outline: none; }
 </style>

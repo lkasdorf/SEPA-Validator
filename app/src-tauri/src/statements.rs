@@ -9,7 +9,7 @@ use quick_xml::reader::Reader;
 use serde::Serialize;
 
 use crate::model::Message;
-use crate::payments::RemittanceEntry;
+use crate::payments::{Detail, RemittanceEntry};
 use crate::plausibility::{warning, Amount, LineCounter};
 
 /// Root elements of the camt messages handled here.
@@ -55,6 +55,59 @@ struct Entry {
     creditor_name: Option<String>,
     creditor_iban: Option<String>,
     additional_info: Option<String>,
+    /// `BkTxCd`: ISO domain, family and sub-family codes, and the proprietary
+    /// code (DK: the GVC, e.g. "166" or "NTRF+166"). Entry level wins over
+    /// the first transaction's codes.
+    domain: Option<String>,
+    family: Option<String>,
+    sub_family: Option<String>,
+    proprietary: Option<String>,
+    /// Number of `TxDtls` (more than one: a batch; details come from the first).
+    tx_count: u32,
+    /// Currency of the last amount element opened inside the entry.
+    last_ccy: Option<String>,
+    /// Further entry information for the details view, first value per label.
+    details: Vec<(&'static str, String)>,
+}
+
+impl Entry {
+    /// Records `value` under `label` unless the label already has a value.
+    fn detail(&mut self, label: &'static str, value: &str) {
+        if !self.details.iter().any(|(l, _)| *l == label) {
+            self.details.push((label, value.to_string()));
+        }
+    }
+
+    /// An amount with the currency of its element ("12.50 USD").
+    fn detail_amount(&mut self, label: &'static str, value: &str) {
+        let v = match &self.last_ccy {
+            Some(c) => format!("{value} {c}"),
+            None => value.to_string(),
+        };
+        self.detail(label, &v);
+    }
+
+    /// "PMNT-RCDT-ESCT", or as much of it as the entry has.
+    fn iso_code(&self) -> Option<String> {
+        let parts: Vec<&str> = [&self.domain, &self.family, &self.sub_family]
+            .into_iter()
+            .map_while(|p| p.as_deref())
+            .collect();
+        (!parts.is_empty()).then(|| parts.join("-"))
+    }
+
+    /// The German business transaction code (GVC): a three-digit code given
+    /// alone ("166") or as the second part of a SWIFT-style code ("NTRF+166++901").
+    fn gvc(&self) -> Option<String> {
+        let p = self.proprietary.as_deref()?.trim();
+        let candidate = if p.contains('+') {
+            p.split('+').nth(1)?
+        } else {
+            p
+        };
+        (candidate.len() == 3 && candidate.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| candidate.to_string())
+    }
 }
 
 impl Entry {
@@ -168,6 +221,16 @@ fn start(b: &mut Block, stack: &[String], name: &str, e: &BytesStart) {
                 bal.currency = attr(e, b"Ccy");
             }
         }
+        (["Ntry", "NtryDtls"], "TxDtls") => {
+            if let Some(n) = b.entries.last_mut() {
+                n.tx_count += 1;
+            }
+        }
+        (["Ntry", ..], "Amt" | "TtlAmt") if path.len() > 1 => {
+            if let Some(n) = b.entries.last_mut() {
+                n.last_ccy = attr(e, b"Ccy");
+            }
+        }
         (["Ntry"], "Amt") => {
             if let Some(n) = b.entries.last_mut() {
                 n.currency = attr(e, b"Ccy");
@@ -178,6 +241,85 @@ fn start(b: &mut Block, stack: &[String], name: &str, e: &BytesStart) {
 }
 
 /// Text inside a block; `path` is the element path below the block element.
+/// Details of the first `TxDtls` of an entry.
+fn tx_detail(n: &mut Entry, tx: &[&str], v: &str) {
+    match tx {
+        ["Refs", "EndToEndId"] if v != "NOTPROVIDED" => n.detail("EndToEndId", v),
+        ["Refs", "MndtId"] => n.detail("Mandate ID", v),
+        ["Refs", "InstrId"] => n.detail("InstrId", v),
+        ["Refs", "PmtInfId"] => n.detail("PmtInfId", v),
+        ["Refs", "TxId"] => n.detail("TxId", v),
+        ["Refs", "UETR"] => n.detail("UETR", v),
+        ["RltdPties", "Dbtr", "Pty", "Nm"] | ["RltdPties", "Dbtr", "Nm"] => n.detail("Debtor", v),
+        ["RltdPties", "Cdtr", "Pty", "Nm"] | ["RltdPties", "Cdtr", "Nm"] => n.detail("Creditor", v),
+        ["RltdPties", "UltmtDbtr", "Pty", "Nm"] | ["RltdPties", "UltmtDbtr", "Nm"] => {
+            n.detail("Ultimate debtor", v)
+        }
+        ["RltdPties", "UltmtCdtr", "Pty", "Nm"] | ["RltdPties", "UltmtCdtr", "Nm"] => {
+            n.detail("Ultimate creditor", v)
+        }
+        ["RltdPties", "Cdtr", "Pty", "Id", "PrvtId", "Othr", "Id"] => n.detail("Creditor ID", v),
+        ["RltdPties", "DbtrAcct", "Id", "IBAN"] | ["RltdPties", "DbtrAcct", "Id", "Othr", "Id"] => {
+            n.detail("Debtor account", v)
+        }
+        ["RltdPties", "CdtrAcct", "Id", "IBAN"] | ["RltdPties", "CdtrAcct", "Id", "Othr", "Id"] => {
+            n.detail("Creditor account", v)
+        }
+        ["RltdAgts", "DbtrAgt", "FinInstnId", "BICFI" | "BIC"] => n.detail("Debtor bank (BIC)", v),
+        ["RltdAgts", "CdtrAgt", "FinInstnId", "BICFI" | "BIC"] => {
+            n.detail("Creditor bank (BIC)", v)
+        }
+        ["Purp", "Cd"] => n.detail("Purpose code", v),
+        ["RmtInf", "Strd", "CdtrRefInf", "Ref"] => n.detail("Creditor reference", v),
+        ["RtrInf", "Rsn", "Cd"] => n.detail("Return reason", v),
+        ["RtrInf", "AddtlInf"] => n.detail("Return info", v),
+        ["AmtDtls", "InstdAmt", "Amt"] => n.detail_amount("Instructed amount", v),
+        ["AmtDtls", "TxAmt", "Amt"] => n.detail_amount("Transaction amount", v),
+        ["AmtDtls", "CntrValAmt", "Amt"] => n.detail_amount("Counter value", v),
+        ["AmtDtls", _, "CcyXchg", "XchgRate"] => n.detail("Exchange rate", v),
+        ["Chrgs", "Rcrd", "Amt"] | ["Chrgs", "TtlChrgsAndTaxAmt"] => n.detail_amount("Charges", v),
+        ["AddtlTxInf"] => n.detail("Additional info", v),
+        _ => {}
+    }
+}
+
+/// Display order of the details; labels not listed go last.
+const DETAIL_ORDER: &[&str] = &[
+    "Posting text",
+    "Value date",
+    "Reversal",
+    "Debtor",
+    "Debtor account",
+    "Debtor bank (BIC)",
+    "Ultimate debtor",
+    "Creditor",
+    "Creditor account",
+    "Creditor bank (BIC)",
+    "Ultimate creditor",
+    "Creditor ID",
+    "Mandate ID",
+    "EndToEndId",
+    "Creditor reference",
+    "Purpose code",
+    "Return reason",
+    "Return info",
+    "Instructed amount",
+    "Transaction amount",
+    "Counter value",
+    "Exchange rate",
+    "Charges",
+    "Batch: transactions",
+    "Batch: total",
+    "Batch: PmtInfId",
+    "Bank reference",
+    "Entry reference",
+    "InstrId",
+    "PmtInfId",
+    "TxId",
+    "UETR",
+    "Additional info",
+];
+
 fn text(b: &mut Block, path: &[String], v: &str, line: u32) {
     let p: Vec<&str> = path.iter().map(String::as_str).collect();
     let at = || At {
@@ -232,20 +374,42 @@ fn text(b: &mut Block, path: &[String], v: &str, line: u32) {
                 ["CdtDbtInd"] => n.debit = Some(v == "DBIT"),
                 ["Sts", "Cd"] | ["Sts"] => n.status = Some(v.to_string()),
                 ["BookgDt", "Dt" | "DtTm"] => own(&mut n.booking_date),
-                ["AddtlNtryInf"] => own(&mut n.additional_info),
-                ["NtryDtls", "TxDtls", tx @ ..] => match tx {
-                    ["Refs", "EndToEndId"] => own(&mut n.end_to_end_id),
-                    ["RmtInf", "Ustrd"] => n.ustrd.push(v.to_string()),
-                    ["RltdPties", "Dbtr", "Pty", "Nm"] | ["RltdPties", "Dbtr", "Nm"] => {
-                        own(&mut n.debtor_name)
-                    }
-                    ["RltdPties", "DbtrAcct", "Id", "IBAN"] => own(&mut n.debtor_iban),
-                    ["RltdPties", "Cdtr", "Pty", "Nm"] | ["RltdPties", "Cdtr", "Nm"] => {
-                        own(&mut n.creditor_name)
-                    }
-                    ["RltdPties", "CdtrAcct", "Id", "IBAN"] => own(&mut n.creditor_iban),
+                ["AddtlNtryInf"] => {
+                    own(&mut n.additional_info);
+                    n.detail("Posting text", v);
+                }
+                ["NtryRef"] => n.detail("Entry reference", v),
+                ["AcctSvcrRef"] => n.detail("Bank reference", v),
+                ["ValDt", "Dt" | "DtTm"] => n.detail("Value date", v),
+                ["RvslInd"] if v == "true" => n.detail("Reversal", "yes"),
+                ["NtryDtls", "Btch", "NbOfTxs"] => n.detail("Batch: transactions", v),
+                ["NtryDtls", "Btch", "PmtInfId"] => n.detail("Batch: PmtInfId", v),
+                ["NtryDtls", "Btch", "TtlAmt"] => n.detail_amount("Batch: total", v),
+                ["BkTxCd", code @ ..] | ["NtryDtls", "TxDtls", "BkTxCd", code @ ..] => match code {
+                    ["Domn", "Cd"] => own(&mut n.domain),
+                    ["Domn", "Fmly", "Cd"] => own(&mut n.family),
+                    ["Domn", "Fmly", "SubFmlyCd"] => own(&mut n.sub_family),
+                    ["Prtry", "Cd"] => own(&mut n.proprietary),
                     _ => {}
                 },
+                ["NtryDtls", "TxDtls", tx @ ..] => {
+                    if n.tx_count <= 1 {
+                        tx_detail(n, tx, v);
+                    }
+                    match tx {
+                        ["Refs", "EndToEndId"] => own(&mut n.end_to_end_id),
+                        ["RmtInf", "Ustrd"] => n.ustrd.push(v.to_string()),
+                        ["RltdPties", "Dbtr", "Pty", "Nm"] | ["RltdPties", "Dbtr", "Nm"] => {
+                            own(&mut n.debtor_name)
+                        }
+                        ["RltdPties", "DbtrAcct", "Id", "IBAN"] => own(&mut n.debtor_iban),
+                        ["RltdPties", "Cdtr", "Pty", "Nm"] | ["RltdPties", "Cdtr", "Nm"] => {
+                            own(&mut n.creditor_name)
+                        }
+                        ["RltdPties", "CdtrAcct", "Id", "IBAN"] => own(&mut n.creditor_iban),
+                        _ => {}
+                    }
+                }
                 _ => {}
             }
         }
@@ -491,7 +655,22 @@ pub fn summarize(xml: &str) -> (Vec<StatementSummary>, Vec<RemittanceEntry>) {
             debit_count: t.debit_count,
             debit_sum: t.debit_sum.display(),
         });
-        for n in b.entries {
+        for mut n in b.entries {
+            let (iso_tx_code, gvc) = (n.iso_code(), n.gvc());
+            let mut details = std::mem::take(&mut n.details);
+            details.sort_by_key(|(l, _)| {
+                DETAIL_ORDER
+                    .iter()
+                    .position(|o| o == l)
+                    .unwrap_or(usize::MAX)
+            });
+            let details = details
+                .into_iter()
+                .map(|(label, value)| Detail {
+                    label: label.to_string(),
+                    value,
+                })
+                .collect();
             let debit = n.debit == Some(true);
             let (name, iban) = if debit {
                 (n.creditor_name, n.creditor_iban)
@@ -510,6 +689,10 @@ pub fn summarize(xml: &str) -> (Vec<StatementSummary>, Vec<RemittanceEntry>) {
                 iban,
                 amount: n.amount,
                 currency: n.currency,
+                iso_tx_code,
+                gvc,
+                prtry_tx_code: n.proprietary,
+                details,
                 booking_date: n.booking_date,
                 credit_debit: n.debit.map(|d| if d { "DBIT" } else { "CRDT" }.to_string()),
                 ..RemittanceEntry::default()
@@ -650,6 +833,99 @@ mod tests {
         assert_eq!(rows[1].ustrd.as_deref(), Some("Invoice 1"));
         assert_eq!(rows[1].booking_date.as_deref(), Some("2026-11-02"));
         assert_eq!(rows[1].end_to_end_id.as_deref(), Some("E2E-1"));
+    }
+
+    #[test]
+    fn bank_transaction_codes_are_read_per_entry() {
+        let codes = |prtry: &str| {
+            format!("        <BkTxCd>\n          <Domn>\n            <Cd>PMNT</Cd>\n            <Fmly>\n              <Cd>RCDT</Cd>\n              <SubFmlyCd>ESCT</SubFmlyCd>\n            </Fmly>\n          </Domn>\n          <Prtry>\n            <Cd>{prtry}</Cd>\n            <Issr>DK</Issr>\n          </Prtry>\n        </BkTxCd>\n")
+        };
+        let xml = camt053(
+            ("0.00", "CRDT"),
+            ("0.00", "CRDT"),
+            "",
+            &[("1.00", "CRDT", "BOOK")],
+        )
+        .replace(
+            "        <NtryDtls>",
+            &format!("{}        <NtryDtls>", codes("166")),
+        );
+        let (_, rows) = summarize(&xml);
+        assert_eq!(rows[0].iso_tx_code.as_deref(), Some("PMNT-RCDT-ESCT"));
+        assert_eq!(rows[0].gvc.as_deref(), Some("166"));
+        assert_eq!(rows[0].prtry_tx_code.as_deref(), Some("166"));
+    }
+
+    #[test]
+    fn the_gvc_is_taken_from_swift_style_codes_and_transaction_details() {
+        let gvc = |p: &str| {
+            Entry {
+                proprietary: Some(p.to_string()),
+                ..Entry::default()
+            }
+            .gvc()
+        };
+        assert_eq!(gvc("NTRF+166"), Some("166".into()));
+        assert_eq!(gvc("NRTI+159++901"), Some("159".into()));
+        assert_eq!(gvc("201"), Some("201".into()));
+        assert_eq!(gvc("NMSC"), None);
+        assert_eq!(gvc("12"), None);
+
+        // Only TxDtls carries a code: it is used for the entry.
+        let xml = camt053(("0.00", "CRDT"), ("0.00", "CRDT"), "", &[("1.00", "CRDT", "BOOK")])
+            .replace(
+                "          <TxDtls>\n",
+                "          <TxDtls>\n            <BkTxCd>\n              <Prtry>\n                <Cd>NTRF+191</Cd>\n              </Prtry>\n            </BkTxCd>\n",
+            );
+        let (_, rows) = summarize(&xml);
+        assert_eq!(rows[0].gvc.as_deref(), Some("191"));
+        assert_eq!(rows[0].iso_tx_code, None);
+    }
+
+    #[test]
+    fn entry_details_are_collected_in_display_order() {
+        let extra = "        <AcctSvcrRef>BANKREF-1</AcctSvcrRef>\n        <AddtlNtryInf>SEPA-Gutschrift</AddtlNtryInf>\n";
+        let tx = "            <Refs>\n              <MndtId>M-77</MndtId>\n            </Refs>\n            <AmtDtls>\n              <InstdAmt>\n                <Amt Ccy=\"USD\">12.00</Amt>\n              </InstdAmt>\n            </AmtDtls>\n            <RtrInf>\n              <Rsn>\n                <Cd>AC04</Cd>\n              </Rsn>\n            </RtrInf>\n";
+        let xml = camt053(
+            ("0.00", "CRDT"),
+            ("0.00", "CRDT"),
+            "",
+            &[("1.00", "CRDT", "BOOK")],
+        )
+        .replace("        <NtryDtls>", &format!("{extra}        <NtryDtls>"))
+        .replace("          <TxDtls>\n", &format!("          <TxDtls>\n{tx}"));
+        let (_, rows) = summarize(&xml);
+        let d: Vec<(String, String)> = rows[0]
+            .details
+            .iter()
+            .map(|d| (d.label.clone(), d.value.clone()))
+            .collect();
+        let get = |l: &str| d.iter().find(|(k, _)| k == l).map(|(_, v)| v.as_str());
+        assert_eq!(d[0].0, "Posting text");
+        assert_eq!(get("Posting text"), Some("SEPA-Gutschrift"));
+        assert_eq!(get("Bank reference"), Some("BANKREF-1"));
+        assert_eq!(get("Mandate ID"), Some("M-77"));
+        assert_eq!(get("Instructed amount"), Some("12.00 USD"));
+        assert_eq!(get("Return reason"), Some("AC04"));
+        assert_eq!(get("Debtor"), Some("Party 0"));
+        assert_eq!(get("EndToEndId"), Some("E2E-0"));
+    }
+
+    #[test]
+    fn batch_entries_take_details_from_the_first_transaction_only() {
+        let xml = camt053(("0.00", "CRDT"), ("0.00", "CRDT"), "", &[("1.00", "CRDT", "BOOK")])
+            .replace(
+                "        </NtryDtls>",
+                "          <TxDtls>\n            <Refs>\n              <EndToEndId>SECOND</EndToEndId>\n            </Refs>\n          </TxDtls>\n        </NtryDtls>",
+            );
+        let (_, rows) = summarize(&xml);
+        let e2e: Vec<&str> = rows[0]
+            .details
+            .iter()
+            .filter(|d| d.label == "EndToEndId")
+            .map(|d| d.value.as_str())
+            .collect();
+        assert_eq!(e2e, vec!["E2E-0"]);
     }
 
     #[test]

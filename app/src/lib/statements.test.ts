@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { sumAmounts } from "./amounts";
 import { sortIndices } from "./transactionSort";
 import { transactionsCsv } from "./transactionsCsv";
+import { filterIndices, searchIndex } from "./transactionFilter";
 import { balanceLabel, kindLabel } from "./statementLabels";
 import { isStatement, signedAmount, type PaymentSummary, type RemittanceEntry } from "./types";
 
@@ -28,8 +29,17 @@ describe("statement entries", () => {
   it("export a booking date column and signed amounts", () => {
     const csv = transactionsCsv([entry("30.50", "DBIT", { name: "Shop" })], false);
     const [header, line] = csv.replace("﻿", "").trim().split("\n");
-    expect(header).toBe("#;Booking date;Name;IBAN;Amount;Currency;Remittance info");
-    expect(line).toBe('1;"2026-11-02";"Shop";"";"-30,50";"EUR";""');
+    expect(header).toBe("#;Booking date;Name;IBAN;Amount;Currency;GVC;ISO code;Remittance info");
+    expect(line).toBe('1;"2026-11-02";"Shop";"";"-30,50";"EUR";"";"";""');
+  });
+
+  it("export and search GVC and ISO transaction codes", () => {
+    const t = entry("12.00", "DBIT", { gvc: "105", isoTxCode: "PMNT-RDDT-ESDD" });
+    const line = transactionsCsv([t], false).replace("\ufeff", "").trim().split("\n")[1];
+    expect(line).toBe('1;"2026-11-02";"";"";"-12,00";"EUR";"105";"PMNT-RDDT-ESDD";""');
+    const index = searchIndex([t, entry("1.00", "CRDT", { gvc: "166" })]);
+    expect(filterIndices(index, "105")).toEqual([0]);
+    expect(filterIndices(index, "esdd")).toEqual([0]);
   });
 
   it("payment files keep their CSV layout", () => {
