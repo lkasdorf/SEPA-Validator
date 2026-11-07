@@ -224,7 +224,7 @@
   .c-iban { width: 210px; }
   .c-amt { width: 120px; }
   .c-gvc { width: 280px; }
-  .gvc-text { color: var(--muted); }
+  .gvc-text { color: var(--muted); margin-left: 0.5em; }
   .c-iso { width: 136px; }
   .c-mndt { width: 160px; }
   .c-date { width: 104px; }
