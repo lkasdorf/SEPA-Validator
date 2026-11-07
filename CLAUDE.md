@@ -58,10 +58,12 @@ Tauri v2 backend (Rust, `src-tauri/`) + Svelte 5/TypeScript/Vite frontend (`src/
     - duplicate EndToEndId
   - `payments`: the Overview/Remittance summary.
   - `statements`: camt.052/053/054 (Rpt/Stmt/Ntfctn): plausibility (opening + booked entries = CLBD, TxsSummry counts/sums/net) and the statement Overview; entries become Transactions rows with booking date and CRDT/DBIT.
+  - `statement_gen`: synthetic camt.053.001.08 statements from a pain.001/pain.008 ("as if the bank had booked it"): one statement per account and booking day, days chained (CLBD → next OPBD), EUR only, bank-side IDs marked `SYNTH-`. Problem files are refused with reasons, never cleaned up.
   - `scanner`: recursive `.xml` expansion.
   - `commands`: the IPC surface:
     - Validation: `start_validation`/`cancel_validation` with `RunState`; `run_batch` survives panics.
     - Reading: `read_formatted`, `read_payment_summary`.
+    - Statements: `preview_statements`, `generate_statements` (writes `<stem>_camt053[_<last4>]_YYYYMMDD.xml` next to the source via `check_export_path` + `create_new`, `_1`, `_2` on collisions).
     - Writing: `write_text_file` and `save_formatted` (guarded by `check_export_path`).
     - Schemas: `schema_status`, `import_schemas` (ZIP: safe names, 10 MB cap), `open_schema_dir`.
     - Links: `open_url` (https allowlist).
