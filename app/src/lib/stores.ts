@@ -43,3 +43,5 @@ export const aboutDialogOpen = writable<boolean>(false);
 export const aboutTab = writable<AboutTab>("about");
 
 export const updateDialogOpen = writable<boolean>(false);
+
+export const statementDialogOpen = writable<boolean>(false);

@@ -171,3 +171,13 @@ export interface ImportResult {
   /** Number of GVCs if a DK mapping table was imported. */
   gvcCodes?: number | null;
 }
+
+/** What "Generate statement" would write for a payment file (Rust `StatementPreview`). */
+export interface StatementPreview {
+  accounts: number;
+  days: number;
+  statements: number;
+  transactions: number;
+  /** Reasons the file can't be booked; when set, every count is 0. */
+  problems: string[];
+}

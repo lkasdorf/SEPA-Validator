@@ -8,6 +8,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::model::{Message, Severity, Status, ValidationResult};
 use crate::scanner;
+use crate::statement_gen::{Generated, StatementPreview};
 use crate::validator::Validator;
 
 #[derive(Clone, Serialize)]
@@ -279,14 +280,9 @@ fn edit_copy_path(source: &Path, n: u32) -> Option<PathBuf> {
 /// on a local drive: nothing the webview could write and later run, no UNC or
 /// device paths, no alternate data streams. (Windows-only app.)
 fn check_export_path(path: &str, extensions: &[&str]) -> Result<PathBuf, String> {
-    use std::path::{Component, Prefix};
     let refuse = || format!("Refusing to write to {path}");
     let p = PathBuf::from(path);
-    let local_drive = matches!(
-        p.components().next(),
-        Some(Component::Prefix(pre)) if matches!(pre.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
-    );
-    if !local_drive || !p.is_absolute() {
+    if !on_local_drive(&p) {
         return Err(refuse());
     }
     let name = p.file_name().and_then(|n| n.to_str()).ok_or_else(refuse)?;
@@ -298,6 +294,142 @@ fn check_export_path(path: &str, extensions: &[&str]) -> Result<PathBuf, String>
         return Err(refuse());
     }
     Ok(p)
+}
+
+/// An absolute path on a local drive letter (`C:\…`), not UNC or a device path.
+fn on_local_drive(p: &Path) -> bool {
+    use std::path::{Component, Prefix};
+    p.is_absolute()
+        && matches!(
+            p.components().next(),
+            Some(Component::Prefix(pre)) if matches!(pre.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
+        )
+}
+
+/// Statements are written next to the source, which the export guard only
+/// allows on a local drive; say so up front instead of a bare refusal.
+fn check_statement_source(source: &Path) -> Result<(), String> {
+    if on_local_drive(source) {
+        Ok(())
+    } else {
+        Err("Statements are saved next to the payment file, which must be on a local drive. Copy the file to a local folder first.".into())
+    }
+}
+
+/// What *Generate statement* would write for the payment file `source`.
+#[tauri::command]
+pub fn preview_statements(source: String) -> Result<StatementPreview, String> {
+    check_statement_source(Path::new(&source))?;
+    let xml = read_utf8(Path::new(&source))?;
+    Ok(crate::statement_gen::preview(
+        &xml,
+        &crate::plausibility::today(),
+    ))
+}
+
+/// Write synthetic camt.053 statements for `source` next to it and return their
+/// paths. `opening_balance` is the first day's balance as typed (`10000.00`).
+#[tauri::command]
+pub fn generate_statements(source: String, opening_balance: String) -> Result<Vec<String>, String> {
+    write_statements(
+        Path::new(&source),
+        &opening_balance,
+        &crate::plausibility::today(),
+        &crate::statement_gen::now_utc(),
+    )
+}
+
+fn read_utf8(path: &Path) -> Result<String, String> {
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    String::from_utf8(bytes).map_err(|_| "The file is not UTF-8.".to_string())
+}
+
+fn write_statements(
+    source: &Path,
+    opening: &str,
+    today: &str,
+    now: &str,
+) -> Result<Vec<String>, String> {
+    check_statement_source(source)?;
+    let opening = crate::statement_gen::parse_opening(opening)?;
+    let xml = read_utf8(source)?;
+    let name = source
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
+    let generated = crate::statement_gen::generate(&xml, name, opening, today, now)
+        .map_err(|r| r.join("\n"))?;
+    let targets = statement_targets(source, &generated)?;
+    let mut written: Vec<String> = Vec::new();
+    for (g, target) in generated.iter().zip(&targets) {
+        match write_new(target, &g.xml) {
+            Ok(p) => written.push(p.display().to_string()),
+            Err(e) if written.is_empty() => return Err(e),
+            Err(e) => return Err(format!("{e}\nAlready written: {}", written.join(", "))),
+        }
+    }
+    Ok(written)
+}
+
+/// The preferred target of each statement (before any `_1` collision suffix):
+/// `<stem>_camt053[_<account tag>]_YYYYMMDD.xml` next to `source`.
+fn statement_targets(source: &Path, generated: &[Generated]) -> Result<Vec<PathBuf>, String> {
+    let dir = source.parent().ok_or("The source file has no folder.")?;
+    let stem = source
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or("The source file has no name.")?;
+    let several = generated.iter().any(|g| g.iban != generated[0].iban);
+    Ok(generated
+        .iter()
+        .map(|g| {
+            let account = if several {
+                format!("_{}", g.tag)
+            } else {
+                String::new()
+            };
+            dir.join(format!(
+                "{stem}_camt053{account}_{}.xml",
+                g.date.replace('-', "")
+            ))
+        })
+        .collect())
+}
+
+/// Create `preferred` (or `<stem>_1.xml`, `_2`, … if it exists) through the
+/// export guard. `create_new` makes sure no existing file, the source included,
+/// is ever overwritten.
+fn write_new(preferred: &Path, contents: &str) -> Result<PathBuf, String> {
+    use std::io::Write;
+    let stem = preferred
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
+    for i in 0..1000 {
+        let candidate = if i == 0 {
+            preferred.to_path_buf()
+        } else {
+            preferred.with_file_name(format!("{stem}_{i}.xml"))
+        };
+        let target = check_export_path(&candidate.display().to_string(), &["xml"])?;
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&target)
+        {
+            Ok(mut f) => {
+                f.write_all(contents.as_bytes())
+                    .map_err(|e| format!("Could not write {}: {e}", target.display()))?;
+                return Ok(target);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(format!("Could not write {}: {e}", target.display())),
+        }
+    }
+    Err(format!(
+        "No free file name next to {}.",
+        preferred.display()
+    ))
 }
 
 /// Return the pretty-printed XML for the viewer. Falls back to raw bytes if the
@@ -1155,5 +1287,168 @@ mod tests {
     fn a_folder_without_an_uninstaller_is_a_portable_copy() {
         let dir = fresh_dir("sepa_portable_layout");
         assert!(is_portable_dir(&dir));
+    }
+
+    const TODAY: &str = "2026-11-07";
+    const NOW: &str = "2026-11-07T09:30:00";
+    const SRC_NAME: &str = "20261107_TEST_PAIN001.xml";
+
+    /// A synthetic pain.001 (test IBANs, invented names) with one block per date.
+    fn synthetic_pain001(ccy: &str, dates: &[&str]) -> String {
+        let blocks: String = dates
+            .iter()
+            .map(|d| {
+                format!(
+                    "<PmtInf><PmtInfId>P-{d}</PmtInfId><ReqdExctnDt>{d}</ReqdExctnDt>\
+                     <Dbtr><Nm>Example Owner Ltd</Nm></Dbtr>\
+                     <DbtrAcct><Id><IBAN>DE09000000000000000001</IBAN></Id></DbtrAcct>\
+                     <CdtTrfTxInf><PmtId><EndToEndId>E-{d}</EndToEndId></PmtId>\
+                     <Amt><InstdAmt Ccy=\"{ccy}\">10.00</InstdAmt></Amt><Cdtr><Nm>Supplier One</Nm></Cdtr>\
+                     <CdtrAcct><Id><IBAN>DE52000000000000000003</IBAN></Id></CdtrAcct></CdtTrfTxInf></PmtInf>"
+                )
+            })
+            .collect();
+        format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Document xmlns=\"urn:iso:std:iso:20022:tech:xsd:pain.001.001.03\">\
+             <CstmrCdtTrfInitn><GrpHdr><MsgId>M</MsgId></GrpHdr>{blocks}</CstmrCdtTrfInitn></Document>\n"
+        )
+    }
+
+    fn generated(iban: &str, date: &str) -> Generated {
+        Generated {
+            iban: iban.into(),
+            tag: iban[iban.len() - 4..].into(),
+            date: date.into(),
+            xml: String::new(),
+        }
+    }
+
+    #[test]
+    fn network_source_is_refused_with_a_reason() {
+        let unc = r"\\server\share\20261107_TEST_PAIN001.xml";
+        let err = write_statements(Path::new(unc), "1.00", TODAY, NOW).unwrap_err();
+        assert!(err.contains("local drive"), "{err}");
+        let err = preview_statements(unc.into()).unwrap_err();
+        assert!(err.contains("local drive"), "{err}");
+    }
+
+    #[test]
+    fn targets_use_the_account_tag() {
+        let src = fresh_dir("sepa_stmt_targets_tag").join(SRC_NAME);
+        let mut a = generated("DE57000000000000010001", "2026-12-01");
+        let mut b = generated("DE08000000000000020001", "2026-12-01");
+        a.tag = "10001".into();
+        b.tag = "20001".into();
+        assert_eq!(
+            names(&statement_targets(&src, &[a, b]).unwrap()),
+            [
+                "20261107_TEST_PAIN001_camt053_10001_20261201.xml",
+                "20261107_TEST_PAIN001_camt053_20001_20261201.xml"
+            ]
+        );
+    }
+
+    fn names(paths: &[PathBuf]) -> Vec<String> {
+        paths
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn targets_single_account() {
+        let dir = fresh_dir("sepa_stmt_targets_single");
+        let src = dir.join(SRC_NAME);
+        let t = statement_targets(
+            &src,
+            &[
+                generated("DE09000000000000000001", "2026-12-01"),
+                generated("DE09000000000000000001", "2026-12-03"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            names(&t),
+            [
+                "20261107_TEST_PAIN001_camt053_20261201.xml",
+                "20261107_TEST_PAIN001_camt053_20261203.xml"
+            ]
+        );
+        assert!(t.iter().all(|p| p.parent() == Some(dir.as_path())));
+    }
+
+    #[test]
+    fn targets_multi_account() {
+        let src = fresh_dir("sepa_stmt_targets_multi").join(SRC_NAME);
+        let t = statement_targets(
+            &src,
+            &[
+                generated("DE79000000000000000002", "2026-12-01"),
+                generated("DE09000000000000000001", "2026-12-01"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            names(&t),
+            [
+                "20261107_TEST_PAIN001_camt053_0002_20261201.xml",
+                "20261107_TEST_PAIN001_camt053_0001_20261201.xml"
+            ]
+        );
+    }
+
+    #[test]
+    fn second_run_does_not_overwrite() {
+        let dir = fresh_dir("sepa_stmt_second_run");
+        let src = dir.join(SRC_NAME);
+        let source_xml = synthetic_pain001("EUR", &["2026-12-01"]);
+        write_file(&src, &source_xml);
+        let first = write_statements(&src, "10000.00", TODAY, NOW).unwrap();
+        assert_eq!(first.len(), 1);
+        assert!(
+            first[0].ends_with("20261107_TEST_PAIN001_camt053_20261201.xml"),
+            "{first:?}"
+        );
+        let before = std::fs::read(&first[0]).unwrap();
+        let second = write_statements(&src, "500.00", TODAY, NOW).unwrap();
+        assert!(
+            second[0].ends_with("20261107_TEST_PAIN001_camt053_20261201_1.xml"),
+            "{second:?}"
+        );
+        assert_eq!(std::fs::read(&first[0]).unwrap(), before);
+        assert_eq!(std::fs::read_to_string(&src).unwrap(), source_xml);
+        let written = std::fs::read_to_string(&second[0]).unwrap();
+        assert!(written.contains("camt.053.001.08") && written.contains("500.00"));
+    }
+
+    #[test]
+    fn refuses_bad_opening() {
+        let dir = fresh_dir("sepa_stmt_bad_opening");
+        let src = dir.join(SRC_NAME);
+        write_file(&src, &synthetic_pain001("EUR", &["2026-12-01"]));
+        let err = write_statements(&src, "10.000,00", TODAY, NOW).unwrap_err();
+        assert!(err.contains("10000.00"), "{err}");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn refused_file_writes_nothing() {
+        let dir = fresh_dir("sepa_stmt_refused");
+        let src = dir.join(SRC_NAME);
+        write_file(&src, &synthetic_pain001("USD", &["2026-12-01"]));
+        let err = write_statements(&src, "10000.00", TODAY, NOW).unwrap_err();
+        assert!(err.contains("USD"), "{err}");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn non_utf8_source_is_refused() {
+        let dir = fresh_dir("sepa_stmt_latin1");
+        let src = dir.join(SRC_NAME);
+        std::fs::write(&src, b"<Document>\xe4</Document>").unwrap();
+        assert_eq!(
+            write_statements(&src, "1.00", TODAY, NOW).unwrap_err(),
+            "The file is not UTF-8."
+        );
     }
 }
