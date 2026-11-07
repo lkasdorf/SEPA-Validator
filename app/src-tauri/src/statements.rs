@@ -195,8 +195,14 @@ fn parse(xml: &str) -> Vec<Block> {
                 }
                 stack.pop();
             }
-            Ok(Event::Text(t)) => {
-                if let (Some(b), Ok(v)) = (block.as_mut(), t.unescape()) {
+            Ok(ev @ (Event::Text(_) | Event::CData(_))) => {
+                // CDATA is literal text (`<![CDATA[A & B]]>`), not escaped.
+                let v = match &ev {
+                    Event::Text(t) => t.unescape().ok().map(|v| v.into_owned()),
+                    Event::CData(c) => Some(String::from_utf8_lossy(c).into_owned()),
+                    _ => None,
+                };
+                if let (Some(b), Some(v)) = (block.as_mut(), v) {
                     let v = v.trim();
                     if !v.is_empty() {
                         text(b, &stack[3..], v, line);
@@ -755,6 +761,33 @@ mod tests {
             TWO,
         );
         assert_eq!(check(&xml), vec![]);
+    }
+
+    #[test]
+    fn cdata_text_is_read() {
+        let xml = camt053(
+            ("1000.00", "CRDT"),
+            ("1069.50", "CRDT"),
+            &summary("2", "130.50", ("69.50", "CRDT")),
+            TWO,
+        )
+        .replace("<Nm>Party 0</Nm>", "<Nm><![CDATA[A & B <Test>]]></Nm>")
+        .replace(
+            "<Ustrd>Invoice 1</Ustrd>",
+            "<Ustrd><![CDATA[Invoice <1> & more]]></Ustrd>",
+        )
+        .replace(
+            "<Amt Ccy=\"EUR\">100.00</Amt>",
+            "<Amt Ccy=\"EUR\"><![CDATA[100.00]]></Amt>",
+        );
+        // The CDATA amount counts: the balances add up, and a wrong CLBD is
+        // still caught (an unread amount would skip the balance check).
+        assert_eq!(check(&xml), vec![]);
+        assert_eq!(check(&xml.replace(">1069.50<", ">1070.00<")).len(), 1);
+        let (_, rows) = summarize(&xml);
+        assert_eq!(rows[0].name.as_deref(), Some("A & B <Test>"));
+        assert_eq!(rows[0].amount.as_deref(), Some("100.00"));
+        assert_eq!(rows[1].ustrd.as_deref(), Some("Invoice <1> & more"));
     }
 
     #[test]
