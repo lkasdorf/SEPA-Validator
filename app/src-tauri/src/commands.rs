@@ -190,14 +190,9 @@ fn write_formatted_copy(source: &Path, target: &str) -> Result<(), String> {
 /// on a local drive: nothing the webview could write and later run, no UNC or
 /// device paths, no alternate data streams. (Windows-only app.)
 fn check_export_path(path: &str, extensions: &[&str]) -> Result<PathBuf, String> {
-    use std::path::{Component, Prefix};
     let refuse = || format!("Refusing to write to {path}");
     let p = PathBuf::from(path);
-    let local_drive = matches!(
-        p.components().next(),
-        Some(Component::Prefix(pre)) if matches!(pre.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
-    );
-    if !local_drive || !p.is_absolute() {
+    if !on_local_drive(&p) {
         return Err(refuse());
     }
     let name = p.file_name().and_then(|n| n.to_str()).ok_or_else(refuse)?;
@@ -211,9 +206,30 @@ fn check_export_path(path: &str, extensions: &[&str]) -> Result<PathBuf, String>
     Ok(p)
 }
 
+/// An absolute path on a local drive letter (`C:\…`), not UNC or a device path.
+fn on_local_drive(p: &Path) -> bool {
+    use std::path::{Component, Prefix};
+    p.is_absolute()
+        && matches!(
+            p.components().next(),
+            Some(Component::Prefix(pre)) if matches!(pre.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
+        )
+}
+
+/// Statements are written next to the source, which the export guard only
+/// allows on a local drive; say so up front instead of a bare refusal.
+fn check_statement_source(source: &Path) -> Result<(), String> {
+    if on_local_drive(source) {
+        Ok(())
+    } else {
+        Err("Statements are saved next to the payment file, which must be on a local drive. Copy the file to a local folder first.".into())
+    }
+}
+
 /// What *Generate statement* would write for the payment file `source`.
 #[tauri::command]
 pub fn preview_statements(source: String) -> Result<StatementPreview, String> {
+    check_statement_source(Path::new(&source))?;
     let xml = read_utf8(Path::new(&source))?;
     Ok(crate::statement_gen::preview(
         &xml,
@@ -244,6 +260,7 @@ fn write_statements(
     today: &str,
     now: &str,
 ) -> Result<Vec<String>, String> {
+    check_statement_source(source)?;
     let opening = crate::statement_gen::parse_opening(opening)?;
     let xml = read_utf8(source)?;
     let name = source
@@ -265,7 +282,7 @@ fn write_statements(
 }
 
 /// The preferred target of each statement (before any `_1` collision suffix):
-/// `<stem>_camt053[_<last 4 of IBAN>]_YYYYMMDD.xml` next to `source`.
+/// `<stem>_camt053[_<account tag>]_YYYYMMDD.xml` next to `source`.
 fn statement_targets(source: &Path, generated: &[Generated]) -> Result<Vec<PathBuf>, String> {
     let dir = source.parent().ok_or("The source file has no folder.")?;
     let stem = source
@@ -277,7 +294,7 @@ fn statement_targets(source: &Path, generated: &[Generated]) -> Result<Vec<PathB
         .iter()
         .map(|g| {
             let account = if several {
-                format!("_{}", &g.iban[g.iban.len().saturating_sub(4)..])
+                format!("_{}", g.tag)
             } else {
                 String::new()
             };
@@ -977,9 +994,35 @@ mod tests {
     fn generated(iban: &str, date: &str) -> Generated {
         Generated {
             iban: iban.into(),
+            tag: iban[iban.len() - 4..].into(),
             date: date.into(),
             xml: String::new(),
         }
+    }
+
+    #[test]
+    fn network_source_is_refused_with_a_reason() {
+        let unc = r"\\server\share\20261107_TEST_PAIN001.xml";
+        let err = write_statements(Path::new(unc), "1.00", TODAY, NOW).unwrap_err();
+        assert!(err.contains("local drive"), "{err}");
+        let err = preview_statements(unc.into()).unwrap_err();
+        assert!(err.contains("local drive"), "{err}");
+    }
+
+    #[test]
+    fn targets_use_the_account_tag() {
+        let src = fresh_dir("sepa_stmt_targets_tag").join(SRC_NAME);
+        let mut a = generated("DE57000000000000010001", "2026-12-01");
+        let mut b = generated("DE08000000000000020001", "2026-12-01");
+        a.tag = "10001".into();
+        b.tag = "20001".into();
+        assert_eq!(
+            names(&statement_targets(&src, &[a, b]).unwrap()),
+            [
+                "20261107_TEST_PAIN001_camt053_10001_20261201.xml",
+                "20261107_TEST_PAIN001_camt053_20001_20261201.xml"
+            ]
+        );
     }
 
     fn names(paths: &[PathBuf]) -> Vec<String> {

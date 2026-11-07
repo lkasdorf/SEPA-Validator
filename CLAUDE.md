@@ -63,7 +63,7 @@ Tauri v2 backend (Rust, `src-tauri/`) + Svelte 5/TypeScript/Vite frontend (`src/
   - `commands`: the IPC surface:
     - Validation: `start_validation`/`cancel_validation` with `RunState`; `run_batch` survives panics.
     - Reading: `read_formatted`, `read_payment_summary`.
-    - Statements: `preview_statements`, `generate_statements` (writes `<stem>_camt053[_<last4>]_YYYYMMDD.xml` next to the source via `check_export_path` + `create_new`, `_1`, `_2` on collisions).
+    - Statements: `preview_statements`, `generate_statements` (writes `<stem>_camt053[_<account tag>]_YYYYMMDD.xml` next to the source (tag = last 4 IBAN chars, longer if two accounts share them; local drives only) via `check_export_path` + `create_new`, `_1`, `_2` on collisions).
     - Writing: `write_text_file` and `save_formatted` (guarded by `check_export_path`).
     - Schemas: `schema_status`, `import_schemas` (ZIP: safe names, 10 MB cap), `open_schema_dir`.
     - Links: `open_url` (https allowlist).

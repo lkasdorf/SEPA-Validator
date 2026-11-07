@@ -25,6 +25,10 @@ pub(crate) struct Tx {
     pub iban: Option<String>,
     pub ustrd: Vec<String>,
     pub mandate_id: Option<String>,
+    /// Service level SEPA / local instrument B2B: the transaction's own
+    /// `PmtTpInf` if it has one, else the PmtInf's.
+    pub sepa: bool,
+    pub b2b: bool,
 }
 
 /// One PmtInf block. `iban`/`owner`/`bic` describe the booked account
@@ -59,6 +63,8 @@ struct RawTx {
     currency: Option<String>,
     equivalent: bool,
     creditor_id: Option<String>,
+    sepa: Option<bool>,
+    b2b: Option<bool>,
 }
 
 /// A PmtInf block while it is being read.
@@ -246,6 +252,8 @@ fn tx_text(t: &mut RawTx, p: &[&str], v: &str) {
         ["DrctDbtTx", "MndtRltdInf", "MndtId"] => set(&mut t.tx.mandate_id),
         ["DrctDbtTx", "CdtrSchmeId", "Id", "PrvtId", "Othr", "Id"] => set(&mut t.creditor_id),
         ["RmtInf", "Ustrd"] => t.tx.ustrd.push(v.to_string()),
+        ["PmtTpInf", "SvcLvl", "Cd"] => t.sepa = Some(v == "SEPA"),
+        ["PmtTpInf", "LclInstrm", "Cd"] => t.b2b = Some(v == "B2B"),
         _ => {}
     }
 }
@@ -257,7 +265,12 @@ fn finish_tx(t: RawTx, n: usize, b: &mut RawBlock, reasons: &mut Vec<String>) {
         currency,
         equivalent,
         creditor_id,
+        sepa,
+        b2b,
     } = t;
+    // The PmtInf's PmtTpInf precedes its transactions, so it is known here.
+    tx.sepa = sepa.unwrap_or(b.block.sepa);
+    tx.b2b = b2b.unwrap_or(b.block.b2b);
     let what = format!("Transaction {}", label(tx.end_to_end_id.as_deref(), n));
     let before = reasons.len();
     if equivalent {
@@ -364,8 +377,30 @@ pub(crate) fn parse_opening(s: &str) -> Result<Amount, String> {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Generated {
     pub iban: String,
+    /// Short account tag for file names and synthetic IDs: the IBAN's last 4
+    /// characters, more if two accounts of the file would share them.
+    pub tag: String,
     pub date: String,
     pub xml: String,
+}
+
+/// One tag per IBAN (same order): the shortest common suffix length from 4 to
+/// 8 that tells all accounts apart, else the last 4 plus `-<n>`. At most 8
+/// characters for up to 99 accounts, so the synthetic IDs stay within Max35Text.
+fn account_tags(ibans: &[&str]) -> Vec<String> {
+    let suffix = |iban: &str, n: usize| iban[iban.len().saturating_sub(n)..].to_string();
+    for n in 4..=8 {
+        let tags: Vec<String> = ibans.iter().map(|i| suffix(i, n)).collect();
+        let distinct: std::collections::BTreeSet<&String> = tags.iter().collect();
+        if distinct.len() == tags.len() {
+            return tags;
+        }
+    }
+    ibans
+        .iter()
+        .enumerate()
+        .map(|(i, iban)| format!("{}-{}", suffix(iban, 4), i + 1))
+        .collect()
 }
 
 /// What `generate` would produce, for the dialog. With `problems` the file
@@ -397,12 +432,15 @@ pub(crate) fn generate(
         .take(500)
         .collect();
     let mut out = Vec::new();
-    for (iban, days) in group(&p) {
+    let groups = group(&p);
+    let tags = account_tags(&groups.iter().map(|(iban, _)| *iban).collect::<Vec<_>>());
+    for ((iban, days), tag) in groups.iter().zip(&tags) {
         let mut balance = opening;
         for (seq, (date, blocks)) in days.iter().enumerate() {
             let ctx = Day {
                 payment: &p,
                 iban,
+                tag,
                 date,
                 blocks,
                 opening: balance,
@@ -413,6 +451,7 @@ pub(crate) fn generate(
             let (xml, closing) = render(&ctx);
             out.push(Generated {
                 iban: iban.to_string(),
+                tag: tag.clone(),
                 date: date.to_string(),
                 xml,
             });
@@ -496,6 +535,7 @@ fn group(p: &Payment) -> Vec<(&str, Days<'_>)> {
 struct Day<'a> {
     payment: &'a Payment,
     iban: &'a str,
+    tag: &'a str,
     date: &'a str,
     blocks: &'a [&'a Block],
     opening: Amount,
@@ -603,7 +643,7 @@ fn render(d: &Day) -> (String, Amount) {
         .collect();
     let total = Amount(entries.iter().map(|e| e.amount().0).sum());
     let closing = Amount(d.opening.0 + if debit { -total.0 } else { total.0 });
-    let last4 = &d.iban[d.iban.len().saturating_sub(4)..];
+    let tag = d.tag;
     let day = d.date.replace('-', "");
     let owner = d.blocks.iter().find_map(|b| b.owner.as_deref());
     let bic = d.blocks.iter().find_map(|b| b.bic.as_deref());
@@ -619,11 +659,11 @@ fn render(d: &Day) -> (String, Amount) {
     w.open("BkToCstmrStmt");
     w.open("GrpHdr");
     let stamp = d.now.replace(['-', ':'], "");
-    w.leaf("MsgId", &format!("SYNTH-{stamp}-{last4}-{:03}", d.seq));
+    w.leaf("MsgId", &format!("SYNTH-{stamp}-{tag}-{:03}", d.seq));
     w.leaf("CreDtTm", d.now);
     w.close("GrpHdr");
     w.open("Stmt");
-    w.leaf("Id", &format!("SYNTH-{day}-{last4}-{:03}", d.seq));
+    w.leaf("Id", &format!("SYNTH-{day}-{tag}-{:03}", d.seq));
     w.leaf("ElctrncSeqNb", &d.seq.to_string());
     w.leaf("CreDtTm", d.now);
     w.open("FrToDt");
@@ -675,7 +715,7 @@ fn render(d: &Day) -> (String, Amount) {
             e,
             ind,
             owner,
-            &format!("SYNTH-{day}-{last4}-E{}", i + 1),
+            &format!("SYNTH-{day}-{tag}-E{}", i + 1),
         );
     }
     w.leaf("AddtlStmtInf", d.note);
@@ -700,7 +740,8 @@ fn entry(w: &mut W, d: &Day, e: &Entry, ind: &str, owner: Option<&str>, referenc
         w.close(tag);
     }
     w.leaf("AcctSvcrRef", reference);
-    let (family, sub) = match (debit, b.sepa, b.b2b) {
+    let first = e.txs[0];
+    let (family, sub) = match (debit, first.sepa, first.b2b) {
         (true, true, _) => ("ICDT", "ESCT"),
         (true, false, _) => ("ICDT", "XBCT"),
         (false, _, true) => ("IDDT", "BBDD"),
@@ -1035,6 +1076,67 @@ mod gen_tests {
 
         let b2b = gen(&direct_debit_xml("B2B"), "10000.00");
         assert_eq!(texts(&b2b[0].xml, &["Fmly", "SubFmlyCd"]), ["BBDD"]);
+    }
+
+    #[test]
+    fn same_last_four_accounts_get_distinct_tags() {
+        // Both end in 0001: the tag grows until the accounts differ.
+        let (a, b) = ("DE57000000000000010001", "DE08000000000000020001");
+        let xml = pain001(
+            NS_001_03,
+            &[
+                ct_block("PA", a, "2026-12-01", "", "SEPA", &[tx("E1", "1.00")]),
+                ct_block("PB", b, "2026-12-01", "", "SEPA", &[tx("E2", "2.00")]),
+            ],
+        );
+        let g = gen(&xml, "10000.00");
+        assert_eq!(
+            g.iter().map(|g| g.tag.as_str()).collect::<Vec<_>>(),
+            ["10001", "20001"]
+        );
+        assert_ne!(
+            texts(&g[0].xml, &["Stmt", "Id"]),
+            texts(&g[1].xml, &["Stmt", "Id"])
+        );
+        assert!(texts(&g[1].xml, &["Stmt", "Id"])[0].contains("-20001-"));
+
+        let single = gen(&single_day_xml(), "10000.00");
+        assert_eq!(single[0].tag, "0001");
+    }
+
+    #[test]
+    fn transaction_level_payment_type() {
+        // SvcLvl on the transaction instead of the PmtInf (some ERP exports).
+        let ct = pain001(
+            NS_001_03,
+            &[ct_block(
+                "P1",
+                OWN_A,
+                "2026-12-01",
+                "",
+                "",
+                &[tx("E1", "1.00")],
+            )],
+        )
+        .replace(
+            "</PmtId><Amt>",
+            "</PmtId><PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl></PmtTpInf><Amt>",
+        );
+        assert_eq!(
+            texts(&gen(&ct, "10000.00")[0].xml, &["Fmly", "SubFmlyCd"]),
+            ["ESCT"]
+        );
+        // LclInstrm B2B on the transaction, none on the PmtInf.
+        let dd = direct_debit_xml("CORE")
+            .replace("<LclInstrm><Cd>CORE</Cd></LclInstrm>", "")
+            .replace(
+                "</PmtId><InstdAmt",
+                "</PmtId><PmtTpInf><LclInstrm><Cd>B2B</Cd></LclInstrm></PmtTpInf><InstdAmt",
+            );
+        assert_eq!(
+            texts(&gen(&dd, "10000.00")[0].xml, &["Fmly", "SubFmlyCd"]),
+            ["BBDD"]
+        );
     }
 
     #[test]
@@ -1397,6 +1499,8 @@ mod tests {
                 iban: Some(CP_1.into()),
                 ustrd: vec!["Invoice E2E-1".into()],
                 mandate_id: None,
+                sepa: true,
+                b2b: false,
             }]
         );
     }
