@@ -147,3 +147,14 @@ export interface ImportResult {
   imported: number;
   skipped: string[];
 }
+
+/** What "Generate statement" would write for a payment file (Rust `StatementPreview`). */
+export interface StatementPreview {
+  kind: string;
+  accounts: number;
+  days: number;
+  statements: number;
+  transactions: number;
+  /** Reasons the file can't be booked; when set, every count is 0. */
+  problems: string[];
+}
