@@ -11,9 +11,21 @@
   import AboutDialog from "./lib/AboutDialog.svelte";
   import UpdateDialog from "./lib/UpdateDialog.svelte";
   import SaveFormatted from "./lib/SaveFormatted.svelte";
+  import EditActions from "./lib/EditActions.svelte";
   import EmptyState from "./lib/EmptyState.svelte";
   import { results, progress, dragging, selectedResult, runId, openViewerSearch, foldAllInViewer, unfoldAllInViewer, schemaDialogOpen, viewerLarge, aboutDialogOpen, updateDialogOpen } from "./lib/stores";
   import { loadPaymentSummary } from "./lib/paymentSummary";
+  import { onMount } from "svelte";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { confirmDiscardDrafts } from "./lib/drafts";
+
+  // Unsaved edits live only in memory: ask before the window closes.
+  onMount(() => {
+    const un = getCurrentWindow().onCloseRequested(async (e) => {
+      if (!(await confirmDiscardDrafts("Close the app"))) e.preventDefault();
+    });
+    return () => { un.then((f) => f()); };
+  });
 
   let viewerTab: "xml" | "summary" | "remittance" | "transactions" = "xml";
   $: empty = $results.length === 0 && !$progress.running;
@@ -65,6 +77,7 @@
         </div>
         {#if viewerTab === "xml"}
           <button class="btn btn--ghost" on:click={() => $openViewerSearch()} disabled={!$selectedResult}>Search</button>
+          <EditActions />
           <SaveFormatted />
           {#if !$viewerLarge}
             <button class="btn btn--ghost" on:click={() => $foldAllInViewer()} disabled={!$selectedResult}>Collapse all</button>

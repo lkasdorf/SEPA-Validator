@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
 use libxml::schemas::{SchemaParserContext, SchemaValidationContext};
@@ -7,13 +8,16 @@ use quick_xml::events::{BytesStart, Event};
 use quick_xml::name::ResolveResult;
 use quick_xml::reader::{NsReader, Reader};
 
-use crate::formatting::format_xml;
+use crate::formatting::format_bytes;
 use crate::model::{Message, Severity, Status, ValidationResult};
 use crate::schema;
 
 /// Returns the namespace URI bound to the first (root) element, or None.
 pub fn detect_namespace(path: &Path) -> Option<String> {
-    let mut reader = NsReader::from_file(path).ok()?;
+    namespace_of(NsReader::from_file(path).ok()?)
+}
+
+fn namespace_of<R: BufRead>(mut reader: NsReader<R>) -> Option<String> {
     let mut buf = Vec::new();
     loop {
         match reader.read_resolved_event_into(&mut buf) {
@@ -33,10 +37,8 @@ pub fn detect_namespace(path: &Path) -> Option<String> {
 /// first debtor account (`DbtrAcct/Id/IBAN`) is a CH/LI IBAN. Creditor accounts
 /// don't count (a German debtor paying a Swiss creditor is not a Swiss file).
 /// Reading stops at the first debtor account, so large files aren't read in full.
-pub fn is_swiss(path: &Path) -> bool {
-    let Ok(mut reader) = Reader::from_file(path) else {
-        return false;
-    };
+pub fn is_swiss(xml: &[u8]) -> bool {
+    let mut reader = Reader::from_reader(xml);
     reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
     let mut stack: Vec<Vec<u8>> = Vec::new();
@@ -85,11 +87,11 @@ fn root_names_swiss_schema(root: &BytesStart) -> bool {
 
 /// Which schema variant a file needs when its namespace is shared (see
 /// `schema::Variant`). Swiss wins: SPS files may carry CHF, SHAR etc.
-pub fn detect_variant(path: &Path) -> schema::Variant {
-    if is_swiss(path) {
+pub fn detect_variant(xml: &[u8]) -> schema::Variant {
+    if is_swiss(xml) {
         schema::Variant::Swiss
     } else {
-        dk_credit_transfer_kind(path)
+        dk_credit_transfer_kind(xml)
     }
 }
 
@@ -105,11 +107,9 @@ pub fn detect_variant(path: &Path) -> schema::Variant {
 /// urgent, and anything else is SEPA. The few files valid against both CCU and
 /// AXZ (EUR, URGP, SHAR) are guessed as CCU; the validator then falls back to the
 /// other DK schemas if the guess fails (`dk_candidates`).
-pub fn dk_credit_transfer_kind(path: &Path) -> schema::Variant {
+pub fn dk_credit_transfer_kind(xml: &[u8]) -> schema::Variant {
     use schema::Variant;
-    let Ok(mut reader) = Reader::from_file(path) else {
-        return Variant::Standard;
-    };
+    let mut reader = Reader::from_reader(xml);
     reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
     let mut stack: Vec<Vec<u8>> = Vec::new();
@@ -205,11 +205,39 @@ impl Validator {
     }
 
     pub fn validate_file(&mut self, path: &Path) -> ValidationResult {
-        let file = path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string();
+        let bytes = match std::fs::read(path) {
+            Ok(b) => b,
+            Err(e) => {
+                let text = if path.exists() {
+                    format!("Cannot read the file: {e}")
+                } else {
+                    "File not found.".into()
+                };
+                return ValidationResult {
+                    file: file_name_of(path),
+                    path: path.display().to_string(),
+                    namespace: String::new(),
+                    schema: String::new(),
+                    status: Status::Error,
+                    errors: 1,
+                    warnings: 0,
+                    messages: vec![Message {
+                        severity: Severity::Error,
+                        text,
+                        line: None,
+                        column: None,
+                        hint: None,
+                    }],
+                };
+            }
+        };
+        self.validate_bytes(path, &bytes)
+    }
+
+    /// Validate XML held in memory as if it were the content of `path` (which
+    /// only names the result; it is not read). Used for text edited in the viewer.
+    pub fn validate_bytes(&mut self, path: &Path, bytes: &[u8]) -> ValidationResult {
+        let file = file_name_of(path);
         let path_str = path.display().to_string();
 
         let mk = |ns: String,
@@ -230,24 +258,7 @@ impl Validator {
             }
         };
 
-        if !path.exists() {
-            return mk(
-                String::new(),
-                String::new(),
-                vec![Message {
-                    severity: Severity::Error,
-                    text: "File not found.".into(),
-                    line: None,
-                    column: None,
-                    hint: None,
-                }],
-                Status::Error,
-                1,
-                0,
-            );
-        }
-
-        let ns = match detect_namespace(path) {
+        let ns = match namespace_of(NsReader::from_reader(bytes)) {
             Some(ns) => ns,
             None => {
                 return mk(
@@ -268,7 +279,7 @@ impl Validator {
         };
 
         let variant = if schema::has_variants(&ns) {
-            detect_variant(path)
+            detect_variant(bytes)
         } else {
             schema::Variant::Standard
         };
@@ -313,7 +324,7 @@ impl Validator {
 
         // Format first, then validate the formatted text so that libxml's
         // reported line/col numbers match what the viewer shows (`read_formatted`).
-        let formatted = match format_xml(path) {
+        let formatted = match format_bytes(bytes) {
             Ok(s) => s,
             Err(e) => {
                 return mk(
@@ -476,6 +487,13 @@ fn parse_strict(text: &str) -> Result<Document, Message> {
     }
 }
 
+fn file_name_of(path: &Path) -> String {
+    path.file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string()
+}
+
 fn has_errors(messages: &[Message]) -> bool {
     messages.iter().any(|m| m.severity == Severity::Error)
 }
@@ -560,7 +578,7 @@ mod tests {
             "ch_debtor",
             &pain001("", "CH9300762011623852957", "DE89370400440532013000"),
         );
-        assert!(is_swiss(&p));
+        assert!(is_swiss(&std::fs::read(&p).unwrap()));
     }
 
     #[test]
@@ -569,7 +587,7 @@ mod tests {
             "li_debtor",
             &pain001("", "LI21088100002324013AA", "DE89370400440532013000"),
         );
-        assert!(is_swiss(&p));
+        assert!(is_swiss(&std::fs::read(&p).unwrap()));
     }
 
     #[test]
@@ -578,7 +596,7 @@ mod tests {
             "de_debtor",
             &pain001("", "DE89370400440532013000", "CH9300762011623852957"),
         );
-        assert!(!is_swiss(&p));
+        assert!(!is_swiss(&std::fs::read(&p).unwrap()));
     }
 
     #[test]
@@ -588,7 +606,7 @@ mod tests {
             "ch_location",
             &pain001(attrs, "DE89370400440532013000", "DE89370400440532013000"),
         );
-        assert!(is_swiss(&p));
+        assert!(is_swiss(&std::fs::read(&p).unwrap()));
     }
 
     #[test]
@@ -621,8 +639,8 @@ mod tests {
 
     const DE_IBAN: &str = "DE89370400440532013000";
 
-    fn kind_of(tag: &str, xml: &str) -> schema::Variant {
-        detect_variant(&temp_named(&format!("kind_{tag}"), xml))
+    fn kind_of(_tag: &str, xml: &str) -> schema::Variant {
+        detect_variant(xml.as_bytes())
     }
 
     #[test]

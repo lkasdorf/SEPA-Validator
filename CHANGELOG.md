@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Edit files in the XML viewer.** Type directly in the viewer; the bar then shows **● Modified** with **Validate**, **Save copy** and **Discard**.
+  - **Validate** checks the edited text without saving it, with the same schema, variant and plausibility checks. Well-formed text is re-indented first, so the log's line numbers always match the viewer. The log says when it shows the edited text rather than the file on disk.
+  - **Save copy** (or Ctrl+S) writes `NAME_edit1.xml` next to the original (`_edit2`, … if taken; editing a copy counts on). The original is never overwritten. The copy appears under the original in the file list, validated and selected.
+  - **Discard** puts the file's text back; Ctrl+Z brings the edits back.
+  - Unsaved edits are kept per file while you switch files (a dot in the file list marks them). Closing the app or validating other files asks first.
+  - Large files are editable too.
+
 ## [2.5.0] - 2026-10-16
 
 ### Added

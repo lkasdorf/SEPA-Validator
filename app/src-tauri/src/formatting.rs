@@ -45,9 +45,14 @@ pub fn format_xml(path: &Path) -> Result<String, FormatError> {
         line: None,
         column: None,
     })?;
-    let text = std::str::from_utf8(&bytes).map_err(|e| {
+    format_bytes(&bytes)
+}
+
+/// Pretty-print XML held in memory (e.g. text edited in the viewer); see `format_xml`.
+pub fn format_bytes(bytes: &[u8]) -> Result<String, FormatError> {
+    let text = std::str::from_utf8(bytes).map_err(|e| {
         at(
-            &bytes,
+            bytes,
             e.valid_up_to(),
             "Invalid UTF-8 byte sequence (SEPA files must be UTF-8 encoded).".into(),
         )
@@ -69,7 +74,7 @@ pub fn format_xml(path: &Path) -> Result<String, FormatError> {
     loop {
         let event = reader.read_event().map_err(|e| {
             at(
-                &bytes,
+                bytes,
                 reader.error_position() as usize,
                 format!("XML not well-formed: {e}"),
             )
@@ -152,7 +157,7 @@ pub fn format_xml(path: &Path) -> Result<String, FormatError> {
             }
             Event::DocType(_) => {
                 return Err(at(
-                    &bytes,
+                    bytes,
                     reader.buffer_position() as usize,
                     "DOCTYPE declarations are not allowed in SEPA files.".into(),
                 ));
@@ -160,7 +165,7 @@ pub fn format_xml(path: &Path) -> Result<String, FormatError> {
             Event::Eof => {
                 if let Some(name) = open.last() {
                     return Err(at(
-                        &bytes,
+                        bytes,
                         bytes.len(),
                         format!(
                             "Unexpected end of file: element <{}> is never closed (file truncated?).",

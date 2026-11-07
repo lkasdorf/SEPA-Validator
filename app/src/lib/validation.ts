@@ -1,6 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { startValidation, cancelValidation as cancelValidationApi } from "./api";
 import { results, selectedIndex, progress, runId } from "./stores";
+import { hasDrafts, confirmDiscardDrafts, clearDrafts } from "./drafts";
 import type { ValidationEvent } from "./types";
 
 let currentRun = 0;
@@ -10,6 +11,11 @@ let currentRun = 0;
  *  backend stops it before its next file. */
 export async function runValidation(paths: string[]): Promise<void> {
   if (paths.length === 0) return;
+  // A new run replaces the file list, so unsaved edits would be lost.
+  if (hasDrafts()) {
+    if (!(await confirmDiscardDrafts("Validate other files"))) return;
+    clearDrafts();
+  }
   const run = ++currentRun;
   runId.set(run);
   results.set([]);

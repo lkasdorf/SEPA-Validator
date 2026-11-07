@@ -1,6 +1,7 @@
 <script lang="ts">
   import { save } from "@tauri-apps/plugin-dialog";
   import { selectedResult } from "./stores";
+  import { selectedDraft } from "./drafts";
   import { saveFormatted } from "./api";
   import { formattedCopyPath } from "./viewer";
 
@@ -32,8 +33,11 @@
   }
 </script>
 
-<button class="btn btn--ghost" on:click={saveCopy} disabled={!$selectedResult}
-        title="Save the indented XML as shown here as a new file (values stay unchanged)">Save formatted…</button>
+<!-- It formats the file on disk, so it would silently drop unsaved edits. -->
+<button class="btn btn--ghost" on:click={saveCopy} disabled={!$selectedResult || !!$selectedDraft}
+        title={$selectedDraft
+          ? "Unsaved edits: use Save copy to keep them"
+          : "Save the indented XML as shown here as a new file (values stay unchanged)"}>Save formatted…</button>
 <span class="note" class:failed role="status" aria-live="polite">{note}</span>
 
 <style>

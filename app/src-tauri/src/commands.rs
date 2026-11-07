@@ -185,6 +185,96 @@ fn write_formatted_copy(source: &Path, target: &str) -> Result<(), String> {
     std::fs::write(target, formatted).map_err(|e| e.to_string())
 }
 
+/// Result of validating text edited in the viewer (not saved).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditedValidation {
+    /// The edited text pretty-printed, or None if it is not well-formed. The
+    /// viewer shows this text, so the result's line numbers match it.
+    formatted: Option<String>,
+    result: ValidationResult,
+}
+
+/// Validate the viewer's edited `text` for `path` without saving it. Runs off
+/// the UI thread; the file on disk is not read or touched.
+#[tauri::command]
+pub async fn validate_edited(
+    app: AppHandle,
+    path: String,
+    text: String,
+) -> Result<EditedValidation, String> {
+    let dir = schema_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || validate_text(dir, Path::new(&path), &text))
+        .await
+        .map_err(|e| format!("Validation failed: {e}"))
+}
+
+fn validate_text(schema_dir: PathBuf, path: &Path, text: &str) -> EditedValidation {
+    EditedValidation {
+        formatted: crate::formatting::format_bytes(text.as_bytes()).ok(),
+        result: Validator::new(schema_dir).validate_bytes(path, text.as_bytes()),
+    }
+}
+
+/// Save the viewer's edited `text` as a copy next to `source`
+/// (`NAME_edit1.xml`, `_edit2`, ...) and return the validation of that copy.
+#[tauri::command]
+pub async fn save_edited(
+    app: AppHandle,
+    source: String,
+    text: String,
+) -> Result<ValidationResult, String> {
+    let dir = schema_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let target = write_edited_copy(Path::new(&source), &text)?;
+        Ok(Validator::new(dir).validate_file(&target))
+    })
+    .await
+    .map_err(|e| format!("Saving failed: {e}"))?
+}
+
+/// Write `text` to the first free `edit_copy_path` next to `source`. Never
+/// overwrites a file (create_new) and only writes `.xml` per `check_export_path`.
+fn write_edited_copy(source: &Path, text: &str) -> Result<PathBuf, String> {
+    use std::io::Write;
+    for n in 1..=MAX_EDIT_COPIES {
+        let target = edit_copy_path(source, n)
+            .ok_or_else(|| format!("Cannot save a copy of {}", source.display()))?;
+        let target = check_export_path(&target.display().to_string(), &["xml"])?;
+        let mut file = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&target)
+        {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e.to_string()),
+        };
+        if let Err(e) = file.write_all(text.as_bytes()) {
+            drop(file);
+            let _ = std::fs::remove_file(&target);
+            return Err(e.to_string());
+        }
+        return Ok(target);
+    }
+    Err(format!(
+        "No free file name: _edit1 to _edit{MAX_EDIT_COPIES} already exist next to the original."
+    ))
+}
+
+const MAX_EDIT_COPIES: u32 = 999;
+
+/// `dir/NAME_editN.xml` for `dir/NAME.xml`. Editing a copy again counts on
+/// from its base name (`NAME_edit1.xml` -> `NAME_edit2.xml`, not `_edit1_edit1`).
+fn edit_copy_path(source: &Path, n: u32) -> Option<PathBuf> {
+    let stem = source.file_stem()?.to_str()?;
+    let base = match stem.rsplit_once("_edit") {
+        Some((base, num)) if !num.is_empty() && num.bytes().all(|b| b.is_ascii_digit()) => base,
+        _ => stem,
+    };
+    Some(source.with_file_name(format!("{base}_edit{n}.xml")))
+}
+
 /// Exports may only create files with one of `extensions` in an existing folder
 /// on a local drive: nothing the webview could write and later run, no UNC or
 /// device paths, no alternate data streams. (Windows-only app.)
@@ -982,6 +1072,78 @@ mod tests {
         assert!(write_formatted_copy(&src, &target.display().to_string()).is_err());
         assert!(!target.exists());
     }
+    #[test]
+    fn edit_copies_are_numbered_from_the_base_name() {
+        let p = |s: &str, n| edit_copy_path(Path::new(s), n).unwrap();
+        let same = |a: PathBuf, b: &str| assert_eq!(a, Path::new(b));
+        same(
+            p(r"C:\d\20261101_ACME_pain001.xml", 1),
+            r"C:\d\20261101_ACME_pain001_edit1.xml",
+        );
+        same(p(r"C:\d\a_edit1.xml", 2), r"C:\d\a_edit2.xml");
+        same(p(r"C:\d\a_edited.xml", 1), r"C:\d\a_edited_edit1.xml");
+        same(p(r"C:\d\a.XML", 3), r"C:\d\a_edit3.xml");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn save_edited_takes_the_next_free_name_and_never_overwrites() {
+        let dir = fresh_dir("sepa_save_edited");
+        let src = dir.join("in.xml");
+        write_file(&src, "<a>original</a>");
+        write_file(&dir.join("in_edit1.xml"), "<a>older edit</a>");
+        let target = write_edited_copy(&src, "<a>new</a>").unwrap();
+        assert_eq!(target, dir.join("in_edit2.xml"));
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "<a>new</a>");
+        assert_eq!(std::fs::read_to_string(&src).unwrap(), "<a>original</a>");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("in_edit1.xml")).unwrap(),
+            "<a>older edit</a>"
+        );
+        // Editing the copy again continues the numbering.
+        let again = write_edited_copy(&target, "<a>newer</a>").unwrap();
+        assert_eq!(again, dir.join("in_edit3.xml"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn save_edited_refuses_unsafe_targets() {
+        assert!(write_edited_copy(Path::new(r"\\attacker\share\in.xml"), "<a/>").is_err());
+        assert!(write_edited_copy(Path::new("relative.xml"), "<a/>").is_err());
+    }
+
+    #[test]
+    fn edited_text_is_validated_without_touching_the_file() {
+        let dir = fresh_dir("sepa_validate_edited");
+        let path = dir.join("missing_on_disk.xml");
+        let text = "<?xml version=\"1.0\"?><a xmlns=\"urn:example:unknown\"><b>1</b></a>";
+        let v = validate_text(dir.clone(), &path, text);
+        assert_eq!(v.result.path, path.display().to_string());
+        assert_eq!(v.result.status, Status::NoSchema);
+        assert_eq!(
+            v.formatted.as_deref(),
+            Some(
+                "<?xml version=\"1.0\"?>
+<a xmlns=\"urn:example:unknown\">
+  <b>1</b>
+</a>"
+            )
+        );
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn malformed_edited_text_has_no_formatted_text() {
+        let dir = fresh_dir("sepa_validate_edited_bad");
+        let v = validate_text(
+            dir.clone(),
+            &dir.join("x.xml"),
+            "<a xmlns=\"urn:x\"><b></a>",
+        );
+        assert!(v.formatted.is_none());
+        assert_ne!(v.result.status, Status::Ok);
+    }
+
     #[test]
     fn a_folder_with_the_nsis_uninstaller_is_an_installation() {
         let dir = fresh_dir("sepa_installed_layout");

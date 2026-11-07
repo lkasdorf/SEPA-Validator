@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { selectedResult, logFilter, search, jumpToLine } from "./stores";
+  import { logFilter, search, jumpToLine } from "./stores";
+  import { shownResult as selectedResult, selectedDraft } from "./drafts";
   import { statusLabel } from "./types";
   import { schemaLabel } from "./schemaLabel";
   import type { Message } from "./types";
@@ -24,6 +25,17 @@
   <header>
     {#if $selectedResult}
       <div class="status {$selectedResult.status}">{statusLabel($selectedResult)}</div>
+      {#if $selectedDraft}
+        <div class="draft" role="note">
+          {#if !$selectedDraft.result}
+            Unsaved edits: this log is for the file on disk. Click Validate to check the edited text.
+          {:else if $selectedDraft.stale}
+            Unsaved edit, changed since the last Validate: line numbers may be off. Validate again.
+          {:else}
+            Unsaved edit: this log is for the edited text, not the file on disk.
+          {/if}
+        </div>
+      {/if}
       <div class="meta">
         {#if $selectedResult.schema}
           Checked against <span class="mono">{$selectedResult.schema}</span>{#if schemaLabel($selectedResult.schema)}&ensp;·&ensp;{schemaLabel($selectedResult.schema)}{/if}
@@ -86,6 +98,7 @@
   .status { font-weight: 700; }
   .status.ok { color: var(--ok); } .status.invalid, .status.error { color: var(--err); }
   .status.warnings, .status.no_schema { color: var(--warn); }
+  .draft { font-size: 12px; color: var(--warn); overflow-wrap: anywhere; }
   .meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
   .controls { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; min-width: 0; }
   .controls input { flex: 1 1 8em; min-width: 0; padding: var(--sp-1) var(--sp-2); background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius); }

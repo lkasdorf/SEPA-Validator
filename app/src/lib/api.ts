@@ -1,5 +1,5 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
-import type { ValidationEvent, ValidationResult, PaymentSummary, SchemaInfo, ImportResult, GvcInfo } from "./types";
+import type { ValidationEvent, ValidationResult, PaymentSummary, SchemaInfo, ImportResult, GvcInfo, EditedValidation } from "./types";
 
 /** Start validation; `onEvent` is called for each streamed event in order. */
 export async function startValidation(
@@ -19,6 +19,16 @@ export function cancelValidation(): Promise<void> {
 /** Write the formatted XML of `source` to `target` (formatted in the backend). */
 export function saveFormatted(source: string, target: string): Promise<void> {
   return invoke("save_formatted", { source, target });
+}
+
+/** Validate text edited in the viewer for `path` without saving it. */
+export function validateEdited(path: string, text: string): Promise<EditedValidation> {
+  return invoke<EditedValidation>("validate_edited", { path, text });
+}
+
+/** Save edited text as `NAME_editN.xml` next to `source`; returns the new file's validation. */
+export function saveEdited(source: string, text: string): Promise<ValidationResult> {
+  return invoke<ValidationResult>("save_edited", { source, text });
 }
 
 export function readFormatted(path: string): Promise<string> {
