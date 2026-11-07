@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Generate a bank statement from a payment file.** With a pain.001 or pain.008 file selected, **Generate statement…** in the XML tab writes camt.053.001.08 statements next to it, as if the bank had booked the file: one statement per account and booking day, each day's closing balance opening the next. The opening balance is entered in the dialog (default 10,000.00 EUR). Files are named `<file>_camt053_YYYYMMDD.xml` (with the last 4 IBAN characters when the file covers several accounts, more if two accounts share them) and never overwrite anything (`_1`, `_2`). The new statements are added to the file list and validated. Account, counterparties, references and remittance text come from the source; everything the bank would add is synthetic (`SYNTH-` IDs, "SYNTHETIC TEST BANK"). Only EUR is booked; files with other currencies, unreadable amounts or invalid IBANs are refused with the reasons listed. The dialog warns when `camt.053.001.08.xsd` hasn't been imported yet. Statement creation times are UTC (`Z`) and never before the end of the booking day.
+- **Edit files in the XML viewer.** Type directly in the viewer; the bar then shows **● Modified** with **Validate**, **Save copy** and **Discard**.
+  - **Validate** checks the edited text without saving it, with the same schema, variant and plausibility checks. Well-formed text is re-indented first, so the log's line numbers always match the viewer. The log says when it shows the edited text rather than the file on disk.
+  - **Save copy** (or Ctrl+S) writes `NAME_edit1.xml` next to the original (`_edit2`, … if taken; editing a copy counts on). The original is never overwritten. The copy appears under the original in the file list, validated and selected.
+  - **Discard** puts the file's text back; Ctrl+Z brings the edits back.
+  - Unsaved edits are kept per file while you switch files (a dot in the file list marks them). Closing the app or validating other files asks first.
+  - Large files are editable too.
 
 ## [2.5.0] - 2026-10-16
 

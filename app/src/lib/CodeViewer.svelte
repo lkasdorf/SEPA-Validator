@@ -1,15 +1,18 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { EditorState, StateEffect, StateField, RangeSetBuilder, type Extension } from "@codemirror/state";
+  import { EditorState, StateEffect, StateField, RangeSetBuilder, type Extension, type Text } from "@codemirror/state";
   import { EditorView, lineNumbers, keymap, Decoration, type DecorationSet } from "@codemirror/view";
   import { xml } from "@codemirror/lang-xml";
   import { oneDark } from "@codemirror/theme-one-dark";
   import { search, searchKeymap, highlightSelectionMatches, openSearchPanel } from "@codemirror/search";
   import { codeFolding, foldGutter, foldKeymap, foldAll, unfoldAll } from "@codemirror/language";
+  import { history, historyKeymap, defaultKeymap } from "@codemirror/commands";
   import { selectedResult, runId, jumpToLine, openViewerSearch, foldAllInViewer, unfoldAllInViewer, viewerLarge } from "./stores";
   import { readFormatted } from "./api";
   import { createLatest } from "./latest";
-  import { errorLinesOf } from "./viewer";
+  import { errorLinesOf, minimalChange } from "./viewer";
+  import { drafts, editorStates, setDirty, shownResult } from "./drafts";
+  import { registerEditor, saveDraft } from "./editing";
 
   let host: HTMLDivElement;
   let view: EditorView | null = null;
@@ -17,6 +20,8 @@
   let requestedKey = ""; // file the viewer should show
   let shownKey = ""; // file whose text is in the editor right now
   let decoratedFor = ""; // key + error lines last decorated (avoid redundant re-dispatches)
+  let shownPath = ""; // path of the file in the editor ("" while none)
+  let original: Text | null = null; // its text as loaded: edits are compared against it
   const latest = createLatest();
 
   const HEAVY_LIMIT = 10 * 1024 * 1024;
@@ -69,10 +74,16 @@
 
   const BASE: Extension[] = [lineNumbers(), oneDark,
     search({ top: true }),
-    keymap.of([...searchKeymap, ...foldKeymap]),
+    history(),
+    keymap.of([
+      { key: "Mod-s", preventDefault: true, run: () => { void saveDraft(); return true; } },
+      ...searchKeymap, ...foldKeymap, ...historyKeymap, ...defaultKeymap,
+    ]),
     errorField, activeLineField,
-    EditorView.editable.of(false),
-    EditorState.readOnly.of(true),
+    // Editing marks the file as a draft until its text equals the loaded one again.
+    EditorView.updateListener.of((u) => {
+      if (u.docChanged && shownPath && original) setDirty(shownPath, !u.state.doc.eq(original));
+    }),
     EditorView.theme({
       ".cm-error-line": { backgroundColor: "rgba(244,71,71,0.18)" },
       ".cm-active-error-line": {
@@ -94,27 +105,57 @@
 
   onMount(() => {
     view = new EditorView({ parent: host, state: stateFor("") });
+    registerEditor({
+      path: () => (shownKey === requestedKey ? shownPath : ""),
+      text: () => view?.state.doc.toString() ?? "",
+      setText: (text) => replaceText(text),
+      revert: () => { if (original) replaceText(original.toString()); },
+    });
     jumpToLine.set(jumpTo);
     openViewerSearch.set(() => { if (view) openSearchPanel(view); });
     foldAllInViewer.set(() => { if (view) foldAll(view); });
     unfoldAllInViewer.set(() => { if (view) unfoldAll(view); });
-    return () => view?.destroy();
+    return () => { registerEditor(null); view?.destroy(); };
   });
 
   // Load file content when the selection (or the validation run) changes.
-  $: void loadFor($selectedResult?.path, $runId, errorLinesOf($selectedResult?.messages ?? []));
+  // Error lines come from the edited text's result once it was validated.
+  $: void loadFor($selectedResult?.path, $runId, errorLinesOf($shownResult?.messages ?? []));
 
   // Replace the whole state rather than dispatching a document change: while
   // the viewer is hidden (another tab is open), CodeMirror cannot measure, and
   // after a file tall enough for its height scaling (~7M px) replacing the text
   // again throws in the scroll-anchor lookup and leaves the view broken. A new
   // state also resets folds, search and decorations, which belong to the old file.
-  function show(text: string, key: string) {
+  // A draft's state is kept when another file is shown and restored when it
+  // comes back, with its undo history.
+  function show(text: string, key: string, path: string) {
     if (!view) return;
-    view.setState(stateFor(text));
-    viewerLarge.set(text.length > HEAVY_LIMIT);
+    if (shownPath && original && $drafts[shownPath]) {
+      editorStates.set(shownPath, { state: view.state, original });
+    }
+    const kept = editorStates.get(path);
+    if (kept && $drafts[path]) {
+      view.setState(kept.state);
+      original = kept.original;
+    } else {
+      view.setState(stateFor(text));
+      original = view.state.doc;
+    }
+    editorStates.delete(path);
+    viewerLarge.set(view.state.doc.length > HEAVY_LIMIT);
     shownKey = key;
+    shownPath = path;
     decoratedFor = "";
+  }
+
+  /** Replace the text as one undoable change, touching only what differs.
+   *  Only called from the edit actions, which need the viewer visible. */
+  function replaceText(text: string) {
+    if (!view) return;
+    const change = minimalChange(view.state.doc.toString(), text);
+    if (change.from === change.to && change.insert === "") return;
+    view.dispatch({ changes: change });
   }
 
   async function loadFor(path: string | undefined, run: number, errorLines: number[]) {
@@ -122,7 +163,7 @@
     if (!path) {
       latest.begin(); // drop any load still in flight
       requestedKey = "";
-      if (shownKey !== "") show("", "");
+      if (shownKey !== "") show("", "", "");
       return;
     }
     const key = `${run}|${path}`;
@@ -130,9 +171,11 @@
       requestedKey = key;
       const token = latest.begin();
       let text = "";
-      try { text = await readFormatted(path); } catch { text = "(could not read file)"; }
+      if (!(editorStates.has(path) && $drafts[path])) { // a draft needs no reload
+        try { text = await readFormatted(path); } catch { text = "(could not read file)"; }
+      }
       if (!latest.isCurrent(token)) return; // a newer selection won; don't overwrite it
-      show(text, key);
+      show(text, key, path);
     }
     const deco = `${key}|${errorLines.join(",")}`;
     if (shownKey === key && decoratedFor !== deco) {

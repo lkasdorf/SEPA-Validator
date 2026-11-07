@@ -11,11 +11,23 @@
   import AboutDialog from "./lib/AboutDialog.svelte";
   import UpdateDialog from "./lib/UpdateDialog.svelte";
   import SaveFormatted from "./lib/SaveFormatted.svelte";
+  import EditActions from "./lib/EditActions.svelte";
   import StatementDialog from "./lib/StatementDialog.svelte";
   import { isPaymentFile } from "./lib/statementGen";
   import EmptyState from "./lib/EmptyState.svelte";
   import { results, progress, dragging, selectedResult, runId, openViewerSearch, foldAllInViewer, unfoldAllInViewer, schemaDialogOpen, viewerLarge, aboutDialogOpen, updateDialogOpen, statementDialogOpen } from "./lib/stores";
   import { loadPaymentSummary } from "./lib/paymentSummary";
+  import { onMount } from "svelte";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { confirmDiscardDrafts, selectedDraft } from "./lib/drafts";
+
+  // Unsaved edits live only in memory: ask before the window closes.
+  onMount(() => {
+    const un = getCurrentWindow().onCloseRequested(async (e) => {
+      if (!(await confirmDiscardDrafts("Close the app"))) e.preventDefault();
+    });
+    return () => { un.then((f) => f()); };
+  });
 
   let viewerTab: "xml" | "summary" | "remittance" | "transactions" = "xml";
   $: empty = $results.length === 0 && !$progress.running;
@@ -67,10 +79,14 @@
         </div>
         {#if viewerTab === "xml"}
           <button class="btn btn--ghost" on:click={() => $openViewerSearch()} disabled={!$selectedResult}>Search</button>
+          <EditActions />
           <SaveFormatted />
           {#if $selectedResult && isPaymentFile($selectedResult.namespace)}
-            <button class="btn btn--ghost" on:click={() => statementDialogOpen.set(true)} disabled={$progress.running}
-                    title="Create a synthetic camt.053 bank statement as if the bank had booked this file">Generate statement…</button>
+            <!-- It reads the file on disk, so it would ignore unsaved edits. -->
+            <button class="btn btn--ghost" on:click={() => statementDialogOpen.set(true)} disabled={$progress.running || !!$selectedDraft}
+                    title={$selectedDraft
+                      ? "Unsaved edits: save a copy first to generate a statement from it"
+                      : "Create a synthetic camt.053 bank statement as if the bank had booked this file"}>Generate statement…</button>
           {/if}
           {#if !$viewerLarge}
             <button class="btn btn--ghost" on:click={() => $foldAllInViewer()} disabled={!$selectedResult}>Collapse all</button>

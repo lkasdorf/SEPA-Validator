@@ -21,6 +21,12 @@ export interface ValidationResult {
   messages: Message[];
 }
 
+/** `validate_edited`: the result plus the edited text re-indented (null if not well-formed). */
+export interface EditedValidation {
+  formatted: string | null;
+  result: ValidationResult;
+}
+
 export type ValidationEvent =
   | { event: "started"; data: { total: number } }
   | { event: "result"; data: { index: number; result: ValidationResult } }

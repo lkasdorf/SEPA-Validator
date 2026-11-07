@@ -65,6 +65,7 @@ Tauri v2 backend (Rust, `src-tauri/`) + Svelte 5/TypeScript/Vite frontend (`src/
     - Reading: `read_formatted`, `read_payment_summary`.
     - Statements: `preview_statements`, `generate_statements` (writes `<stem>_camt053[_<account tag>]_YYYYMMDD.xml` next to the source (tag = last 4 IBAN chars, longer if two accounts share them; local drives only) via `check_export_path` + `create_new`, `_1`, `_2` on collisions).
     - Writing: `write_text_file` and `save_formatted` (guarded by `check_export_path`).
+    - Editing: `validate_edited` (validates the viewer's text in memory and returns it re-indented, so lines match) and `save_edited` (writes `NAME_editN.xml` next to the original with `create_new`, then validates it). Frontend: `lib/drafts.ts` (per-file unsaved edits) and `lib/editing.ts` (Validate/Save copy/Discard).
     - Schemas: `schema_status`, `import_schemas` (ZIP: safe names, 10 MB cap), `open_schema_dir`.
     - Links: `open_url` (https allowlist).
 - **Live streaming**: `start_validation` runs on a worker thread (libxml types are not `Send`) and streams `ValidationEvent`s (started/result/finished) over a `tauri::ipc::Channel`. The frontend (`lib/validation.ts`) ignores events from superseded runs. The viewer and summary loads use request tokens (`lib/latest.ts`).

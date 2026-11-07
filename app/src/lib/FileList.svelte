@@ -1,5 +1,6 @@
 <script lang="ts">
   import { results, selectedIndex } from "./stores";
+  import { drafts } from "./drafts";
   import { statusLabel } from "./types";
   import type { ValidationResult } from "./types";
 
@@ -26,6 +27,7 @@
         title={statusLabel(r)}>
       <span class="icon {cls(r)}">{icon(r)}</span>
       <span class="name">{r.file}</span>
+      {#if $drafts[r.path]}<span class="dirty" title="Unsaved edits">●</span>{/if}
     </li>
   {/each}
   {#if $results.length === 0}
@@ -40,5 +42,6 @@
   .icon { width: 1em; font-weight: 700; }
   .icon.ok { color: var(--ok); } .icon.err { color: var(--err); } .icon.warn { color: var(--warn); }
   .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dirty { margin-left: auto; color: var(--warn); font-size: 10px; }
   .empty { color: var(--muted); cursor: default; }
 </style>

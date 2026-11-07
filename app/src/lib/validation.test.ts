@@ -14,8 +14,12 @@ vi.mock("./api", () => ({
   cancelValidation: () => cancelValidationApi(),
 }));
 
+const ask = vi.fn(() => Promise.resolve(true));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ ask: () => ask(), open: vi.fn() }));
+
 const { runValidation, appendValidation, cancelValidation } = await import("./validation");
 const { results, progress, runId, selectedIndex } = await import("./stores");
+const { setDirty, hasDrafts, clearDrafts } = await import("./drafts");
 
 const result = (file: string): ValidationResult => ({
   file,
@@ -85,5 +89,26 @@ describe("runValidation", () => {
     startValidation.mockImplementationOnce(() => Promise.reject(new Error("ipc down")));
     await runValidation(["a.xml"]);
     expect(get(progress).running).toBe(false);
+  });
+
+  it("asks before a new run discards unsaved edits", async () => {
+    setDirty("a.xml", true);
+    ask.mockResolvedValueOnce(false);
+    await runValidation(["b.xml"]);
+    expect(startValidation).not.toHaveBeenCalled();
+    expect(hasDrafts()).toBe(true);
+    await runValidation(["b.xml"]);
+    expect(startValidation).toHaveBeenCalledOnce();
+    expect(hasDrafts()).toBe(false);
+  });
+
+  it("keeps unsaved edits when results are appended", async () => {
+    clearDrafts();
+    ask.mockClear();
+    setDirty("a.xml", true);
+    await appendValidation(["b.xml"]);
+    expect(ask).not.toHaveBeenCalled();
+    expect(hasDrafts()).toBe(true);
+    clearDrafts();
   });
 });

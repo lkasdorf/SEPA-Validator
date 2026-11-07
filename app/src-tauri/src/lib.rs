@@ -37,6 +37,8 @@ pub fn run() {
             commands::cancel_validation,
             commands::write_text_file,
             commands::save_formatted,
+            commands::validate_edited,
+            commands::save_edited,
             commands::preview_statements,
             commands::generate_statements,
             commands::read_formatted,
