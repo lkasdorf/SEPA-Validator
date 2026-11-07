@@ -69,6 +69,9 @@ pub struct RemittanceEntry {
     pub currency: Option<String>,
     pub mandate_id: Option<String>,
     pub signature_date: Option<String>,
+    /// Statement entries (camt) only: booking date and "CRDT"/"DBIT".
+    pub booking_date: Option<String>,
+    pub credit_debit: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -80,6 +83,8 @@ pub struct PaymentSummary {
     pub debtor: Option<Debtor>,
     pub blocks: Vec<PmtInfSummary>,
     pub transactions: Vec<RemittanceEntry>,
+    /// camt.052/053/054 statement blocks (empty for payment files).
+    pub statements: Vec<crate::statements::StatementSummary>,
 }
 
 /// Local element name (namespace prefix stripped) as an owned String.
@@ -111,6 +116,20 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
     let message_type = detect_namespace(path)
         .map(|ns| ns.rsplit(':').next().unwrap_or("").to_string())
         .unwrap_or_default();
+
+    if message_type.starts_with("camt.05") {
+        let xml = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+        let (statements, transactions) = crate::statements::summarize(&xml);
+        return Ok(PaymentSummary {
+            message_type,
+            pmt_inf_count: 0,
+            creditor: None,
+            debtor: None,
+            blocks: Vec::new(),
+            transactions,
+            statements,
+        });
+    }
 
     let mut reader = Reader::from_file(path).map_err(|e| e.to_string())?;
     reader.config_mut().trim_text(true);
@@ -190,6 +209,7 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
                                 currency: tx.currency,
                                 mandate_id: tx.mandate_id,
                                 signature_date: tx.signature_date,
+                                ..RemittanceEntry::default()
                             });
                         }
                     }
@@ -322,12 +342,38 @@ pub fn extract_payment_summary(path: &Path) -> Result<PaymentSummary, String> {
         debtor,
         blocks,
         transactions,
+        statements: Vec::new(),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn statements_get_their_blocks_and_entries() {
+        let p = std::env::temp_dir().join("sepa_payments_camt053.xml");
+        std::fs::write(
+            &p,
+            r#"<?xml version="1.0"?><Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><GrpHdr><MsgId>M</MsgId></GrpHdr><Stmt><Id>S1</Id><Acct><Id><IBAN>DE89370400440532013000</IBAN></Id></Acct><Ntry><Amt Ccy="EUR">5.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-02</Dt></BookgDt></Ntry></Stmt></BkToCstmrStmt></Document>"#,
+        )
+        .unwrap();
+        let s = extract_payment_summary(&p).unwrap();
+        assert_eq!(s.message_type, "camt.053.001.08");
+        assert_eq!(s.statements.len(), 1);
+        assert_eq!(
+            s.statements[0].iban.as_deref(),
+            Some("DE89370400440532013000")
+        );
+        assert_eq!(s.transactions.len(), 1);
+        assert_eq!(s.transactions[0].amount.as_deref(), Some("5.00"));
+        assert_eq!(s.transactions[0].credit_debit.as_deref(), Some("DBIT"));
+        assert_eq!(
+            s.transactions[0].booking_date.as_deref(),
+            Some("2026-11-02")
+        );
+        assert_eq!(s.pmt_inf_count, 0);
+    }
     use std::io::Write;
 
     fn temp_xml(name: &str, contents: &str) -> std::path::PathBuf {

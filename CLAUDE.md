@@ -57,6 +57,7 @@ Tauri v2 backend (Rust, `src-tauri/`) + Svelte 5/TypeScript/Vite frontend (`src/
     - past dates (DK `1999-01-01` = as soon as possible)
     - duplicate EndToEndId
   - `payments`: the Overview/Remittance summary.
+  - `statements`: camt.052/053/054 (Rpt/Stmt/Ntfctn): plausibility (opening + booked entries = CLBD, TxsSummry counts/sums/net) and the statement Overview; entries become Transactions rows with booking date and CRDT/DBIT.
   - `scanner`: recursive `.xml` expansion.
   - `commands`: the IPC surface:
     - Validation: `start_validation`/`cancel_validation` with `RunState`; `run_batch` survives panics.

@@ -29,6 +29,14 @@ pub const SCHEMAS: &[(&str, &str)] = &[
         "pain.008.001.08.xsd",
     ),
     (
+        "urn:iso:std:iso:20022:tech:xsd:camt.052.001.08",
+        "camt.052.001.08.xsd",
+    ),
+    (
+        "urn:iso:std:iso:20022:tech:xsd:camt.053.001.08",
+        "camt.053.001.08.xsd",
+    ),
+    (
         "urn:iso:std:iso:20022:tech:xsd:camt.054.001.08",
         "camt.054.001.08.xsd",
     ),
@@ -218,6 +226,18 @@ mod tests {
     }
 
     #[test]
+    fn lookup_account_statements() {
+        assert_eq!(
+            lookup("urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"),
+            Some("camt.053.001.08.xsd")
+        );
+        assert_eq!(
+            lookup("urn:iso:std:iso:20022:tech:xsd:camt.052.001.08"),
+            Some("camt.052.001.08.xsd")
+        );
+    }
+
+    #[test]
     fn lookup_container_gbic5() {
         assert_eq!(
             lookup("urn:conxml:xsd:container.nnn.001.GBIC5"),
@@ -228,7 +248,7 @@ mod tests {
     #[test]
     fn known_schemas_lists_all_with_xsd_filenames() {
         let all = known_schemas();
-        assert_eq!(all.len(), 14);
+        assert_eq!(all.len(), 16);
         assert!(all
             .iter()
             .any(|(_, name)| *name == "pain.001.001.09.ch.03.xsd"));

@@ -9,7 +9,8 @@ export interface CurrencySum {
 const AMOUNT = /^(\d+)(?:\.(\d+))?$/;
 
 /** Exact sum of `InstdAmt` per currency (BigInt, no float rounding) over the
- *  rows at `indices`. Missing or malformed amounts are counted, not summed. */
+ *  rows at `indices`. Statement debits (`creditDebit` DBIT) count negative.
+ *  Missing or malformed amounts are counted, not summed. */
 export function sumAmounts(
   rows: RemittanceEntry[],
   indices: Iterable<number>
@@ -27,9 +28,10 @@ export function sumAmounts(
     const ccy = t.currency ?? "";
     const cur = acc.get(ccy) ?? { units: 0n, scale: 0 };
     const scale = Math.max(cur.scale, frac.length);
+    const sign = t.creditDebit === "DBIT" ? -1n : 1n;
     const units =
       cur.units * 10n ** BigInt(scale - cur.scale) +
-      BigInt(m[1] + frac) * 10n ** BigInt(scale - frac.length);
+      sign * BigInt(m[1] + frac) * 10n ** BigInt(scale - frac.length);
     acc.set(ccy, { units, scale });
   }
   const sums = [...acc.entries()]
@@ -40,8 +42,10 @@ export function sumAmounts(
 
 function formatUnits(units: bigint, scale: number): string {
   const digits = Math.max(2, scale);
-  const s = (units * 10n ** BigInt(digits - scale)).toString().padStart(digits + 1, "0");
-  return `${s.slice(0, -digits)}.${s.slice(-digits)}`;
+  const negative = units < 0n;
+  const abs = negative ? -units : units;
+  const s = (abs * 10n ** BigInt(digits - scale)).toString().padStart(digits + 1, "0");
+  return `${negative ? "-" : ""}${s.slice(0, -digits)}.${s.slice(-digits)}`;
 }
 
 export function formatSums(sums: CurrencySum[]): string {

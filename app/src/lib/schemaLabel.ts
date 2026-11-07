@@ -13,6 +13,8 @@ const LABELS: Record<string, string> = {
   "pain.008.001.08.xsd": "SEPA direct debit (DK)",
   "pain.008.001.02.ch.03.xsd": "Swiss direct debit (SPS)",
   "pain.008.001.02.chsdd.02.xsd": "Swiss direct debit (SPS, CH-DD)",
+  "camt.052.001.08.xsd": "Intraday account report",
+  "camt.053.001.08.xsd": "Account statement",
   "camt.054.001.08.xsd": "Debit/credit notification",
   "container.nnn.001.GBIC4.xsd": "DK SEPA container (GBIC4)",
   "container.nnn.001.GBIC5.xsd": "DK SEPA container (GBIC5)",
