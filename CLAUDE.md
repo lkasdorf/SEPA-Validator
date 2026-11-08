@@ -33,7 +33,7 @@ First-time native setup (vcpkg+libxml2, libclang, local `.cargo/config.toml`) is
 bash scripts/validate.test.sh                            # Tests for the scripts (needs xmllint + rg)
 ```
 
-Prerequisites: `bash`, `xmllint` (always run with `--nonet`), `rg` (ripgrep, for validate_all.sh and the rename scripts; they stop with a clear message without it). On this Windows machine the scripts can be run in WSL (`archlinux` has xmllint and rg).
+Prerequisites: `bash`, `xmllint` (always run with `--nonet`), `rg` (ripgrep, for validate_all.sh and the rename scripts; they stop with a clear message without it). WSL is not installed on this Windows machine, so the scripts and `scripts/validate.test.sh` are not run locally; their tests run only in CI (the ubuntu PII guard job).
 
 ## Architecture
 
