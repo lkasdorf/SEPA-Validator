@@ -4,7 +4,7 @@ Validate SEPA payment and bank statement XML files against ISO 20022 XSD schemas
 
 ![Windows](https://img.shields.io/badge/Windows-10%2F11-blue) ![Tauri](https://img.shields.io/badge/Tauri-Rust%20%2B%20Svelte-24C8DB) ![License](https://img.shields.io/badge/License-MIT-green) [![Latest release](https://img.shields.io/github/v/release/lkasdorf/SEPA-Validator)](https://github.com/lkasdorf/SEPA-Validator/releases/latest) [![CI](https://github.com/lkasdorf/SEPA-Validator/actions/workflows/ci.yml/badge.svg)](https://github.com/lkasdorf/SEPA-Validator/actions/workflows/ci.yml)
 
-![SEPA Validator showing an invalid file with located errors and hints](docs/screenshot.png)
+![SEPA Validator showing a camt.053 statement in the Transactions tab, with GVC names and ISO bank transaction codes](docs/screenshot.png)
 
 This repository contains:
 
