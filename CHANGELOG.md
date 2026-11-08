@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-11-08
+
 ### Fixed
 - **Statement columns disappeared in narrow windows.** In the Transactions tab of a camt file, the Counterparty and Remittance info columns shrank to nothing when the viewer was narrower than about 1300 px; the table now scrolls sideways instead.
 
@@ -164,7 +166,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release: native Windows GUI SEPA XML Validator (PowerShell/WinForms) with full XSD validation, drag & drop, file/folder selection, batch validation, and TXT export.
 - Bash CLI scripts for validation, batch validation, and renaming XML files by date/company/schema.
 
-[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.6.0...HEAD
+[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.6.1...HEAD
+[2.6.1]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.6.0...v2.6.1
 [2.6.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.3.0...v2.4.0
