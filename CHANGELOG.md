@@ -7,7 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-11-08
+
 ### Added
+- **DK foreign payments (AXZ) and urgent euro transfers (CCU) are told apart from SEPA.** The DK publishes three subsets of pain.001.001.09 with the same namespace. The app now picks the subset from the file's content and validates against `pain.001.001.09_AXZ_GBIC_5.xsd`, `pain.001.001.09_CCU_GBIC_5.xsd` or the SEPA schema:
+  - foreign: a non-EUR amount, `EqvtAmt`, `ChrgBr` DEBT/CRED, `PmtMtd` CHK, or a service level other than SEPA/URGP;
+  - urgent: URGP or SHAR;
+  - SEPA: everything else.
+  If that guess fails but another DK subset accepts the file, that one is used. Swiss files (debtor IBAN CH/LI) still go to the Swiss schema. Before, foreign and urgent payments were always reported as invalid SEPA files.
+- **The log names the schema it checked against**, e.g. `Checked against pain.001.001.09_AXZ_GBIC_5.xsd · Foreign payment (DK AXZ)`.
+- **Account statements (camt.052, camt.053, camt.054).** `camt.052.001.08` (intraday report) and `camt.053.001.08` (statement) are validated alongside `camt.054.001.08`.
+  - New plausibility checks for each report, statement or notification: opening booked balance (`OPBD`/`PRCD`) plus booked entries must equal the closing balance `CLBD`, and the `TxsSummry` counts, sums and net amount must match the entries.
+  - **Overview:** account, owner, BIC, statement ID, sequence numbers, period, balances and credit/debit totals.
+  - **Transactions:** one row per entry with booking date, counterparty, **GVC** (DK business transaction code) and **ISO code** (`PMNT-RCDT-ESCT`). Debits are negative in the amounts, the sums, sorting and the CSV.
+  - **Entry details:** a click on an entry shows everything it carries:
+    - posting text, value date;
+    - parties with accounts and BICs, ultimate parties;
+    - creditor ID, mandate ID, EndToEndId, creditor reference, purpose;
+    - return reason;
+    - instructed and counter-value amounts, exchange rate, charges;
+    - batch data and bank references.
+- **GVC names.** **Schemas…** also imports the DK mapping table *Anhang 1 zu Anlage 3 – Datenformatstandards* (`.xlsx`, its ZIP from ebics.de, or a folder). Statement entries then show the GVC's name, e.g. `166 SEPA Credit Transfer (Einzelbuchung-Haben)`, chosen by GVC, ISO code and debit/credit side. Like the XSDs, the table is not bundled.
+- `container.nnn.001.GBIC5` (DK SEPA container from DFÜ V3.9) is recognized.
 - **Generate a bank statement from a payment file.** With a pain.001 or pain.008 file selected, **Generate statement…** in the XML tab writes camt.053.001.08 statements next to it, as if the bank had booked the file: one statement per account and booking day, each day's closing balance opening the next. The opening balance is entered in the dialog (default 10,000.00 EUR). Files are named `<file>_camt053_YYYYMMDD.xml` (with the last 4 IBAN characters when the file covers several accounts, more if two accounts share them) and never overwrite anything (`_1`, `_2`). The new statements are added to the file list and validated. Account, counterparties, references and remittance text come from the source; everything the bank would add is synthetic (`SYNTH-` IDs, "SYNTHETIC TEST BANK"). Only EUR is booked; files with other currencies, unreadable amounts or invalid IBANs are refused with the reasons listed. The dialog warns when `camt.053.001.08.xsd` hasn't been imported yet. Statement creation times are UTC (`Z`) and never before the end of the booking day.
 - **Edit files in the XML viewer.** Type directly in the viewer; the bar then shows **● Modified** with **Validate**, **Save copy** and **Discard**.
   - **Validate** checks the edited text without saving it, with the same schema, variant and plausibility checks. Well-formed text is re-indented first, so the log's line numbers always match the viewer. The log says when it shows the edited text rather than the file on disk.
@@ -15,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Discard** puts the file's text back; Ctrl+Z brings the edits back.
   - Unsaved edits are kept per file while you switch files (a dot in the file list marks them). Closing the app or validating other files asks first.
   - Large files are editable too.
+
+### Fixed
+- **Text in `<![CDATA[...]]>` was ignored** in the Overview, Remittance and Transactions views of pain and camt files. Names, amounts and remittance text written that way were missing, and a camt amount that could not be read skipped the balance check.
 
 ## [2.5.0] - 2026-10-16
 
@@ -137,7 +161,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release: native Windows GUI SEPA XML Validator (PowerShell/WinForms) with full XSD validation, drag & drop, file/folder selection, batch validation, and TXT export.
 - Bash CLI scripts for validation, batch validation, and renaming XML files by date/company/schema.
 
-[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.5.0...HEAD
+[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.6.0...HEAD
+[2.6.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.2.0...v2.3.0

@@ -1,6 +1,6 @@
 # SEPA-Validator
 
-Validate SEPA payment XML files against ISO 20022 XSD schemas, and catch the mistakes the schema can't see.
+Validate SEPA payment and bank statement XML files against ISO 20022 XSD schemas, and catch the mistakes the schema can't see.
 
 ![Windows](https://img.shields.io/badge/Windows-10%2F11-blue) ![Tauri](https://img.shields.io/badge/Tauri-Rust%20%2B%20Svelte-24C8DB) ![License](https://img.shields.io/badge/License-MIT-green) [![Latest release](https://img.shields.io/github/v/release/lkasdorf/SEPA-Validator)](https://github.com/lkasdorf/SEPA-Validator/releases/latest) [![CI](https://github.com/lkasdorf/SEPA-Validator/actions/workflows/ci.yml/badge.svg)](https://github.com/lkasdorf/SEPA-Validator/actions/workflows/ci.yml)
 
@@ -24,16 +24,24 @@ A native Windows application that validates one or many files at once and lets y
 ### Features
 
 - **Strict XSD validation.** Files that aren't well-formed fail with a located error. Values are checked exactly as written, so a stray space in an IBAN or an empty `<Nm></Nm>` is caught.
+- **The right schema per file.** German credit transfers come in three DK subsets of pain.001.001.09 with the same namespace: SEPA, urgent euro (CCU) and foreign payments (AXZ). The app picks the subset from the content, falls back to another DK subset if that one accepts the file, and recognizes Swiss files by the debtor IBAN. The log names the XSD it used.
 - **Plausibility checks** the schema can't express, reported as warnings:
   - `NbOfTxs` and `CtrlSum` checked against the actual transactions.
   - IBAN check digits (mod 97).
   - Execution or collection dates in the past.
   - Duplicate EndToEndIds.
+  - Statements (camt): opening balance plus booked entries must equal the closing balance, and the transaction summary must match the entries.
 - **Readable messages with hints.** For example: "Use a dot as the decimal separator, e.g. 1250.00." or "Required element <InitgPty> is missing in <GrpHdr>."
 - **Live log, click to the error.** Results stream in as files are validated. Click any error to jump to its line in a syntax-highlighted, pretty-printed XML viewer. Search with `Ctrl+F`, fold blocks, and **Cancel** a long run.
-- **Overview and Remittance tabs.** The **Overview** shows the creditor and `PmtInf` statistics for pain.001 and pain.008. **Remittance** lists every transaction with its origin and remittance info, and exports it as CSV.
+- **Overview, Remittance and Transactions tabs.**
+  - The **Overview** shows the creditor or debtor and the `PmtInf` statistics for pain.001 and pain.008. For statements it shows the account, period, sequence number, balances and credit/debit totals.
+  - **Transactions** has one row per transaction or statement entry, with search, sorting, exact sums per currency and CSV export for Excel.
+  - Statement entries add booking date, **GVC** with its name, and the ISO bank transaction code. A click opens all details of the entry: parties, references, return reason, FX amounts, charges.
+  - An **↗** button next to each IBAN checks it online on request.
+- **Edit in the viewer.** Change the XML directly, **Validate** the edited text, and **Save copy** writes `NAME_edit1.xml`. The original is never overwritten.
+- **Generate statement…** turns a pain.001 or pain.008 file into synthetic camt.053 statements, as if the bank had booked it. This is useful for testing statement imports.
 - **Save formatted…** writes the indented XML as a new file. Values stay byte-identical, and the original is never touched.
-- **Schemas… dialog.** Import the XSDs as `.xsd` files, a folder or a `.zip`, and see which are present. Schemas are **not bundled** (see below).
+- **Schemas… dialog.** Import the XSDs as `.xsd` files, a folder or a `.zip`, and see which are present. It also imports the DK GVC mapping table (`.xlsx`) for the GVC names. Neither is **bundled** (see below).
 - **Export and convenience.** TXT/CSV export, light/dark theme, drag & drop, a Help/About menu with third-party licenses, and a built-in **auto-updater**.
 
 ### Install
@@ -50,6 +58,7 @@ The schemas are **not distributed** with the app because they are not redistribu
 1. Open **Schemas…**.
 2. Download the schemas from the [official sources](#obtaining-xsd-schemas).
 3. Import them as `.xsd` files, a folder or a `.zip`.
+4. Optional: also import the DK table *Anhang 1 zu Anlage 3 – Datenformatstandards* (`.xlsx`, from ebics.de) to see the names of GVCs in statements.
 
 The badge in the toolbar shows how many of the expected schemas are present.
 
@@ -72,12 +81,26 @@ Provide the matching XSD via the Schemas… dialog (desktop app) or `xml_schema/
 
 | Format | Description |
 |--------|-------------|
-| pain.001.001.03 / .09 | Credit transfers (`.09` is current) |
+| pain.001.001.03 / .09 | Credit transfers (`.09` is current; see the DK subsets below) |
 | pain.002.001.10 | Payment status reports |
 | pain.007.001.09 | Payment reversals (the app uses the GBIC variant) |
 | pain.008.001.02 / .08 | Direct debits (`.08` is current) |
+| camt.052.001.08 | Bank-to-customer account report (intraday) |
+| camt.053.001.08 | Bank-to-customer statement |
 | camt.054.001.08 | Bank-to-customer debit/credit notification |
-| container.nnn.001.GBIC4 | DK/GBIC container |
+| container.nnn.001.GBIC4 / GBIC5 | DK/GBIC container |
+
+### DK subsets of pain.001.001.09 (desktop app)
+
+The Deutsche Kreditwirtschaft publishes three schemas for pain.001.001.09 that share one namespace. The app picks one per file:
+
+| Schema | Used for | Picked when the file has |
+|--------|----------|--------------------------|
+| `pain.001.001.09_AXZ_GBIC_5.xsd` | Foreign payments and cheques (AXZ) | a non-EUR amount, `EqvtAmt`, `ChrgBr` DEBT/CRED, `PmtMtd` CHK, or a service level other than SEPA/URGP |
+| `pain.001.001.09_CCU_GBIC_5.xsd` | Urgent euro transfers (CCU) | service level URGP or `ChrgBr` SHAR |
+| `pain.001.001.09.xsd` (DK SEPA, GBIC_5) | SEPA and instant credit transfers | anything else |
+
+If the picked schema rejects the file but another DK subset accepts it, that one is used. Swiss files (below) are always checked against the Swiss schema.
 
 ### Swiss Payment Standards (desktop app only)
 
@@ -99,9 +122,9 @@ The XSD schema files are **not included** in this repository. Download them from
 
 | Source | Schemas | URL |
 |--------|---------|-----|
-| ISO 20022 | pain.001, pain.002, pain.008, camt.054, … | [iso20022.org](https://www.iso20022.org/catalogue-of-iso-20022-messages) |
+| ISO 20022 | pain.001, pain.002, pain.008, camt.052/053/054, … | [iso20022.org](https://www.iso20022.org/catalogue-of-iso-20022-messages) |
 | Deutsche Kreditwirtschaft (DK) | GBIC variants for German SEPA | [die-dk.de](https://die-dk.de/themen/zahlungsverkehr/) |
-| EBICS (Germany) | German SEPA data formats & schemas | [ebics.de](https://www.ebics.de/de/datenformate) |
+| EBICS (Germany) | German SEPA data formats & schemas (incl. AXZ, CCU, camt) and the GVC mapping table | [ebics.de](https://www.ebics.de/de/datenformate) |
 | SIX (Switzerland) | Swiss Payment Standards (`.ch.` schemas) | [six-group.com](https://www.six-group.com/en/products-services/banking-services/payment-standardization/standards/iso-20022.html) |
 | EPC | EPC SEPA scheme rulebooks | [europeanpaymentscouncil.eu](https://www.europeanpaymentscouncil.eu/document-library) |
 
