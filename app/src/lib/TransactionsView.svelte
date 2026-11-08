@@ -138,7 +138,7 @@
           {#if shown.skipped > 0}<span class="count">({shown.skipped} without valid amount)</span>{/if}
         </span>
       </div>
-      <table class:dd>
+      <table class:dd class:stmt>
         <colgroup>
           <col class="c-no" />{#if stmt}<col class="c-date" />{/if}<col class="c-name" /><col class="c-iban" /><col class="c-amt" />{#if stmt}<col class="c-gvc" /><col class="c-iso" />{/if}<col class="c-rmt" />
           {#if dd}<col class="c-mndt" /><col class="c-date" />{/if}
@@ -219,6 +219,8 @@
   /* Fixed layout: column widths must not shift as different rows scroll into view. */
   table { border-collapse: collapse; width: 100%; min-width: 760px; table-layout: fixed; font-size: 12px; }
   table.dd { min-width: 980px; }
+  /* Statements add booking date, GVC and ISO columns (902px fixed); leave room for name and remittance info. */
+  table.stmt { min-width: 1300px; }
   .c-no { width: 52px; }
   .c-name { width: 22%; }
   .c-iban { width: 210px; }

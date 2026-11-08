@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Statement columns disappeared in narrow windows.** In the Transactions tab of a camt file, the Counterparty and Remittance info columns shrank to nothing when the viewer was narrower than about 1300 px; the table now scrolls sideways instead.
+
 ## [2.6.0] - 2026-11-08
 
 ### Added
