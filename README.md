@@ -49,7 +49,7 @@ A native Windows application that validates one or many files at once and lets y
 1. Download the latest release from the [**Releases**](https://github.com/lkasdorf/SEPA-Validator/releases/latest) page:
    - `SEPA-Validator-<version>-windows-x64-setup.exe` (installer), or
    - `SEPA-Validator-<version>-windows-x64-portable.exe` (single standalone executable, no installation).
-2. Run it. It needs the Microsoft **WebView2** runtime, which is preinstalled on current Windows 10/11. Code signing through SignPath Foundation is being set up (see the [Code signing policy](CODE_SIGNING_POLICY.md)). Until it is in place, the executables are unsigned, so SmartScreen may warn: choose **More info → Run anyway**.
+2. Run it. It needs the Microsoft **WebView2** runtime, which is preinstalled on current Windows 10/11. The executables are not code-signed yet, so SmartScreen may warn: choose **More info → Run anyway**.
 3. To update, use **☰ → Check for Updates**. The installed app updates itself. The portable version offers the new portable file to download, so it never installs a second copy.
 
 ### First run: import the XSD schemas
@@ -170,7 +170,7 @@ xml_schema/             # Your XSD schema files (not included; download from the
 
 ## Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/). What is signed, the team roles and the privacy policy are in [`CODE_SIGNING_POLICY.md`](CODE_SIGNING_POLICY.md).
+Releases are not code-signed yet. What will be signed once they are, the team roles and the privacy policy are in [`CODE_SIGNING_POLICY.md`](CODE_SIGNING_POLICY.md).
 
 ## License
 

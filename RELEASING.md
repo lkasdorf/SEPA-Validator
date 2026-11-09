@@ -58,11 +58,17 @@ secret to the new key from the following release on.
 
 ## Code signing with SignPath
 
-The executables are Authenticode-signed through the free
-[SignPath Foundation](https://signpath.org/) programme for open source projects. The
-publisher shown by Windows is "SignPath Foundation". What is signed, the team roles and
-the privacy statement are in [`CODE_SIGNING_POLICY.md`](CODE_SIGNING_POLICY.md); SignPath
-requires that page and the "Code signing policy" link in the README and release notes.
+**Status:** not active. The workflow is prepared for the free
+[SignPath Foundation](https://signpath.org/) programme for open source projects, but the
+application was declined in November 2026 because the project does not yet have enough
+public visibility (stars, forks, external references). Reapply once it has. Until
+`SIGNPATH_ORGANIZATION_ID` is set, releases stay unsigned.
+
+With SignPath Foundation, the publisher shown by Windows is "SignPath Foundation". SignPath
+requires [`CODE_SIGNING_POLICY.md`](CODE_SIGNING_POLICY.md) (what is signed, team roles,
+privacy statement), the "Code signing policy" link in the README and release notes, and the
+sentence "Free code signing provided by SignPath.io, certificate by SignPath Foundation"
+with links on that page and in the README.
 
 ### How the workflow signs
 
