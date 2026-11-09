@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Publisher shown as "Leon Kasdorf".** Apps & features and the file properties of the program now name Leon Kasdorf as the publisher instead of "sepa". The automatic update installs over the existing version as before. If you upgrade by running the new installer yourself and it shows "Unable to uninstall!", choose **Do not uninstall** on the next page to install over the old version.
+
 ## [2.6.1] - 2026-11-08
 
 ### Fixed
