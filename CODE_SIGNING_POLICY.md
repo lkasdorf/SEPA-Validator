@@ -1,6 +1,7 @@
 # Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+Releases are **not code-signed yet**. This policy describes how signing works once a
+certificate is in place.
 
 ## What is signed
 
@@ -28,7 +29,7 @@ are not signed separately.
 Committers may change the source code without further review. Changes from
 anyone else, such as pull requests, are reviewed by a reviewer before they are
 merged. Approvers approve each signing request. All team members use
-multi-factor authentication for GitHub and SignPath.
+multi-factor authentication for GitHub and the signing service.
 
 ## Privacy policy
 

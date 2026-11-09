@@ -94,7 +94,7 @@ Tauri v2 backend (Rust, `src-tauri/`) + Svelte 5/TypeScript/Vite frontend (`src/
   - libxml2 comes from vcpkg pinned to the same commit as the local setup and is cached as a vcpkg binary package.
 - **Release** (`release.yml`, on tag `v*`):
   - `tauri build --no-bundle` + `tauri bundle --no-sign`, then a draft release (via `gh`) with the installer, `.sig`, `latest.json`, the portable exe and the notices. `scripts/release-assets.mjs` patches the NSIS bundle type into app.exe before signing and writes `latest.json`.
-  - Authenticode signing goes through SignPath Foundation (two signing requests: binaries, then installer) and is on only when the repo variable `SIGNPATH_ORGANIZATION_ID` is set. Policy: `CODE_SIGNING_POLICY.md`; setup and artifact configurations: `RELEASING.md`.
+  - Authenticode signing is prepared for SignPath (two signing requests: binaries, then installer) and is on only when the repo variable `SIGNPATH_ORGANIZATION_ID` is set. It is currently off: the SignPath Foundation application was declined (2026-11, too little public visibility), so releases are unsigned. Policy: `CODE_SIGNING_POLICY.md`; setup and artifact configurations: `RELEASING.md`.
   - The version has a single source: `"version"` in `app/src-tauri/tauri.conf.json`. Bump it with `node scripts/bump-version.mjs X.Y.Z`.
   - The full procedure, the environment and signing-key handling are in `RELEASING.md`.
 - `claude-review` (separate workflow) only posts a review comment; a green check does not always mean it reviewed.
