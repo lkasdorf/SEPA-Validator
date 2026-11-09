@@ -83,10 +83,20 @@ The token can push to all your public repositories, which is why it lives only i
 `winget` environment. When it expires, the job fails with an authentication error;
 create a new one and set the secret again.
 
-The installed app shows the publisher "sepa" under Apps & features (Tauri derives it
-from the identifier). If `bundle.publisher` is set in `tauri.conf.json`, that name
-changes, and the winget PR for that version needs the new `Publisher` in
-`AppsAndFeaturesEntries`.
+**Publisher.** Up to 2.6.1 the installer registered the publisher "sepa" under
+Apps & features (Tauri derived it from the identifier). From the next release on,
+`bundle.publisher` in `tauri.conf.json` sets it to "Leon Kasdorf". The winget manifest
+records it in `AppsAndFeaturesEntries` → `Publisher`, so for the **first release after
+2.6.1**:
+
+1. Open the PR that `winget.yml` creates and check the installer manifest
+   (`LeonKasdorf.SEPAValidator.installer.yaml`).
+2. If `Publisher` under `AppsAndFeaturesEntries` still says `sepa`, edit that file in the
+   PR branch of your fork `lkasdorf/winget-pkgs` (GitHub → the PR → *Files changed* →
+   ⋯ → *Edit file*) and change it to `Leon Kasdorf`. Otherwise the winget validation
+   reports a metadata mismatch.
+
+Later releases copy the corrected manifest, so this is needed only once.
 
 ## Rotating the signing key
 
