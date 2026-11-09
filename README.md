@@ -15,6 +15,31 @@ Both validate with **libxml2**. Everything runs locally; no file leaves your mac
 
 The original PowerShell/WinForms tool was retired in favour of the desktop app. It is still available at tag [`v1.0.0`](https://github.com/lkasdorf/SEPA-Validator/tree/v1.0.0/windows).
 
+**Deutsch:** [Kurzbeschreibung auf Deutsch](#auf-deutsch)
+
+---
+
+## Auf Deutsch
+
+**SEPA-XML-Dateien prüfen, bevor die Bank sie ablehnt.** SEPA Validator ist eine kostenlose Windows-App (Open Source, MIT-Lizenz), die SEPA-Zahlungsdateien und Kontoauszüge im XML-Format gegen die offiziellen XSD-Schemas prüft. Zusätzlich findet sie Fehler, die das Schema nicht erkennt. Alles läuft lokal: Keine Datei verlässt den Rechner.
+
+**Was die App prüft**
+
+- **Überweisungen und Lastschriften** (pain.001, pain.008), Statusmeldungen (pain.002), Storno-Aufträge (pain.007) sowie **Kontoauszüge und Umsatzmeldungen** (camt.052, camt.053, camt.054).
+- **Das passende Schema je Datei:** Die Deutsche Kreditwirtschaft hat für pain.001.001.09 drei Varianten mit demselben Namespace (SEPA, Eilüberweisung CCU, Auslandszahlung AXZ). Die App erkennt die Variante am Inhalt. Schweizer Dateien (Swiss Payment Standards) erkennt sie an der IBAN des Auftraggebers.
+- **Plausibilität**, die kein XSD abdeckt: Anzahl und Kontrollsumme gegen die tatsächlichen Buchungen, IBAN-Prüfziffer, Ausführungs- oder Fälligkeitsdatum in der Vergangenheit, doppelte EndToEndIds. Bei Kontoauszügen: Anfangssaldo plus Buchungen muss den Schlusssaldo ergeben.
+- **Verständliche Meldungen mit Hinweis**, z. B. „Use a dot as the decimal separator“. Ein Klick auf einen Fehler springt zur Zeile im formatierten XML.
+
+**Außerdem:** Übersicht über Auftraggeber, Zahlungsblöcke und Summen; Umsatzliste mit GVC-Namen (nach Import der DK-Tabelle) und CSV-Export für Excel; Bearbeiten im Viewer (gespeichert wird immer eine Kopie); synthetische camt.053-Kontoauszüge aus einer Zahlungsdatei, um Kontoauszugs-Importe zu testen.
+
+**Installation**
+
+1. Unter [**Releases**](https://github.com/lkasdorf/SEPA-Validator/releases/latest) den Installer (`…-setup.exe`) oder die portable Version (`…-portable.exe`, ohne Installation) herunterladen.
+2. Starten. Die Dateien sind noch nicht signiert, daher warnt Windows SmartScreen eventuell: **Weitere Informationen → Trotzdem ausführen**.
+3. Beim ersten Start unter **Schemas…** die XSD-Dateien importieren. Sie dürfen nicht mitgeliefert werden; Bezugsquellen wie [ebics.de](https://www.ebics.de/de/datenformate) stehen unter [Obtaining XSD schemas](#obtaining-xsd-schemas).
+
+Die Oberfläche ist englisch. Fehler und Wünsche gerne als [Issue](https://github.com/lkasdorf/SEPA-Validator/issues), auch auf Deutsch.
+
 ---
 
 ## Desktop app (recommended)
