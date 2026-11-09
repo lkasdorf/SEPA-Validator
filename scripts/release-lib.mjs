@@ -39,3 +39,34 @@ export function releaseNotes(text, version) {
   const next = lines.findIndex((l, i) => i > at && (l.startsWith("## [") || /^\[[^\]]+\]: /.test(l)));
   return lines.slice(at + 1, next < 0 ? undefined : next).join("\n").trim();
 }
+
+// `tauri bundle` writes the bundle type into the main binary (the updater reads it)
+// and restores the unpatched binary afterwards. Code signing must happen after that
+// patch, so the release workflow patches app.exe itself before it gets signed.
+const BUNDLE_TYPE_UNKNOWN = "__TAURI_BUNDLE_TYPE_VAR_UNK";
+const BUNDLE_TYPE_NSIS = "__TAURI_BUNDLE_TYPE_VAR_NSS";
+
+/** Mark a built (unsigned) app.exe as installed by NSIS; returns a patched copy. */
+export function patchBundleTypeNsis(binary) {
+  const token = Buffer.from(BUNDLE_TYPE_UNKNOWN);
+  const at = binary.indexOf(token);
+  if (at < 0) throw new Error(`no ${BUNDLE_TYPE_UNKNOWN} marker in the binary (already patched?)`);
+  if (binary.indexOf(token, at + 1) >= 0) throw new Error(`more than one ${BUNDLE_TYPE_UNKNOWN} marker in the binary`);
+  const out = Buffer.from(binary);
+  out.write(BUNDLE_TYPE_NSIS, at, "latin1");
+  return out;
+}
+
+/** The updater manifest (latest.json) for one Windows NSIS installer. */
+export function updaterManifest({ version, notes, pubDate, signature, url }) {
+  if (!signature.trim()) throw new Error("empty updater signature");
+  const entry = { signature: signature.trim(), url };
+  return {
+    version,
+    notes,
+    pub_date: pubDate,
+    // Both keys, as tauri-action wrote them: the updater looks up
+    // "<os>-<arch>-<bundle type>" first and falls back to "<os>-<arch>".
+    platforms: { "windows-x86_64": entry, "windows-x86_64-nsis": entry },
+  };
+}

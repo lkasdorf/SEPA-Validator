@@ -1,7 +1,7 @@
 // Tests for the release helpers. Run: node --test scripts/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bumpConfig, bumpChangelog, releaseNotes } from "./release-lib.mjs";
+import { bumpConfig, bumpChangelog, patchBundleTypeNsis, releaseNotes, updaterManifest } from "./release-lib.mjs";
 
 const conf = `{\r\n  "productName": "SEPA Validator",\r\n  "version": "2.2.0",\r\n  "identifier": "dev.sepa.validator"\r\n}\r\n`;
 
@@ -49,4 +49,34 @@ test("bumpChangelog refuses an empty Unreleased section", () => {
 test("releaseNotes returns the body of one version's section", () => {
   assert.equal(releaseNotes(changelog, "2.2.0"), "### Added\n- Swiss schemas.");
   assert.throws(() => releaseNotes(changelog, "9.9.9"), /9\.9\.9/);
+});
+
+test("patchBundleTypeNsis replaces the one unknown-bundle marker and leaves the input alone", () => {
+  const bin = Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from("__TAURI_BUNDLE_TYPE_VAR_UNK"), Buffer.from([3, 4])]);
+  const out = patchBundleTypeNsis(bin);
+  assert.equal(out.length, bin.length);
+  assert.ok(out.includes("__TAURI_BUNDLE_TYPE_VAR_NSS"));
+  assert.ok(!out.includes("__TAURI_BUNDLE_TYPE_VAR_UNK"));
+  assert.deepEqual([...out.subarray(0, 3)], [0, 1, 2]);
+  assert.ok(bin.includes("__TAURI_BUNDLE_TYPE_VAR_UNK"));
+});
+
+test("patchBundleTypeNsis refuses a patched binary or an ambiguous one", () => {
+  assert.throws(() => patchBundleTypeNsis(Buffer.from("__TAURI_BUNDLE_TYPE_VAR_NSS")), /already patched/);
+  const twice = Buffer.from("__TAURI_BUNDLE_TYPE_VAR_UNK..__TAURI_BUNDLE_TYPE_VAR_UNK");
+  assert.throws(() => patchBundleTypeNsis(twice), /more than one/);
+});
+
+test("updaterManifest offers the installer under both Windows keys", () => {
+  const m = updaterManifest({ version: "2.7.0", notes: "n", pubDate: "2026-11-09T00:00:00.000Z", signature: "c2ln\n", url: "https://x/setup.exe" });
+  assert.deepEqual(m, {
+    version: "2.7.0",
+    notes: "n",
+    pub_date: "2026-11-09T00:00:00.000Z",
+    platforms: {
+      "windows-x86_64": { signature: "c2ln", url: "https://x/setup.exe" },
+      "windows-x86_64-nsis": { signature: "c2ln", url: "https://x/setup.exe" },
+    },
+  });
+  assert.throws(() => updaterManifest({ version: "2.7.0", notes: "", pubDate: "", signature: " ", url: "" }), /signature/);
 });
