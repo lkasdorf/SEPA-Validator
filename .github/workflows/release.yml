@@ -3,7 +3,11 @@ name: Release
 # Push a tag vX.Y.Z (matching app/src-tauri/tauri.conf.json, see RELEASING.md) to
 # build, sign and upload a DRAFT release; publish it after a smoke test.
 # "Run workflow" (workflow_dispatch) does a dry run: build and sign, then keep the
-# bundles as workflow artifacts instead of creating a release.
+# bundles as a workflow artifact instead of creating a release.
+#
+# Code signing (Authenticode) goes through SignPath and runs only when the
+# repository variable SIGNPATH_ORGANIZATION_ID is set; without it the executables
+# stay unsigned. The updater signature (minisign) is always made.
 on:
   push:
     tags: ['v*']
@@ -11,6 +15,8 @@ on:
 
 permissions:
   contents: write
+  # SignPath reads the job details and the uploaded artifacts.
+  actions: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -20,14 +26,17 @@ jobs:
   release:
     name: Build, sign & draft release
     runs-on: windows-latest
-    # Holds the signing key; add yourself as a required reviewer so every
-    # signing run needs your approval.
+    # Holds the updater key and the SignPath API token; add yourself as a required
+    # reviewer so every signing run needs your approval.
     environment: release
     env:
       VCPKG_COMMIT: 776a31fc8d3659de2c9cca4364062be5bbdf3857
       VCPKGRS_TRIPLET: x64-windows-static-md
       LIBCLANG_VERSION: 18.1.1
       IS_TAG: ${{ github.ref_type == 'tag' }}
+      SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+      SIGNPATH_PROJECT_SLUG: SEPA-Validator
+      SIGNPATH_POLICY_SLUG: release-signing
     steps:
       - uses: actions/checkout@v4
         with:
@@ -100,42 +109,158 @@ jobs:
         with:
           workspaces: app/src-tauri -> target
 
-      # Builds the NSIS installer, signs it for the updater, and (for tags) creates
-      # the draft release with the installer, its .sig and latest.json.
-      - name: Build, sign and upload
-        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+      - name: Build app.exe
+        working-directory: app
+        run: npx tauri build --no-bundle --ci
+
+      # Two copies of app.exe: the portable exe as built, and the one for the installer
+      # with the "nsis" bundle type that `tauri bundle` would patch in (the updater
+      # reads it). Patching after signing would break the signature, so it happens here.
+      - name: Prepare binaries
+        shell: bash
+        run: |
+          dir="$RUNNER_TEMP/binaries"
+          mkdir -p "$dir"
+          cp app/src-tauri/target/release/app.exe "$dir/portable.exe"
+          cp app/src-tauri/target/release/app.exe "$dir/app.exe"
+          node scripts/release-assets.mjs patch-nsis "$dir/app.exe"
+
+      - name: Upload binaries for signing
+        id: upload-binaries
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-binaries
+          path: ${{ runner.temp }}/binaries/
+          if-no-files-found: error
+          overwrite: true
+
+      # Waits until an approver approves the request in SignPath (see RELEASING.md).
+      - name: Sign binaries (SignPath)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: binaries
+          github-artifact-id: ${{ steps.upload-binaries.outputs.artifact-id }}
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: ${{ runner.temp }}/binaries-signed
+          parameters: |
+            version: ${{ toJSON(steps.meta.outputs.version) }}
+
+      - name: Check binary signatures
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: |
+          foreach ($f in 'app.exe', 'portable.exe') {
+            $s = Get-AuthenticodeSignature (Join-Path $env:RUNNER_TEMP "binaries-signed/$f")
+            if ($s.Status -ne 'Valid') { throw "${f}: signature $($s.Status): $($s.StatusMessage)" }
+            "${f}: signed by $($s.SignerCertificate.Subject)"
+          }
+
+      # `tauri bundle` packs target/release/app.exe. It cannot patch the bundle type
+      # again (the marker is gone) and only logs a warning about that.
+      - name: Build the installer
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          src="$RUNNER_TEMP/binaries"
+          if [ "$SIGN" = "true" ]; then src="$RUNNER_TEMP/binaries-signed"; fi
+          cp "$src/app.exe" app/src-tauri/target/release/app.exe
+          (cd app && npx tauri bundle --bundles nsis --no-sign --ci)
+          dist="$RUNNER_TEMP/dist"
+          mkdir -p "$dist" "$RUNNER_TEMP/installer"
+          cp "$src/portable.exe" "$dist/SEPA-Validator-$VERSION-windows-x64-portable.exe"
+          # Exact name: the bundle folder may still hold installers of older versions.
+          cp "app/src-tauri/target/release/bundle/nsis/SEPA Validator_${VERSION}_x64-setup.exe" \
+            "$RUNNER_TEMP/installer/setup.exe"
+
+      - name: Upload installer for signing
+        id: upload-installer
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-installer
+          path: ${{ runner.temp }}/installer/
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Sign installer (SignPath)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.upload-installer.outputs.artifact-id }}
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: ${{ runner.temp }}/installer-signed
+          parameters: |
+            version: ${{ toJSON(steps.meta.outputs.version) }}
+
+      # The updater signature must cover the final (code-signed) installer, so it is
+      # made last, followed by latest.json.
+      - name: Updater signature and latest.json
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          projectPath: app
-          args: --bundles nsis
-          tagName: ${{ env.IS_TAG == 'true' && github.ref_name || '' }}
-          releaseName: ${{ env.IS_TAG == 'true' && format('SEPA Validator {0}', github.ref_name) || '' }}
-          releaseBody: ${{ steps.meta.outputs.notes }}
-          releaseDraft: true
-          releaseAssetNamePattern: SEPA-Validator-[version]-windows-x64[setup][ext]
-          updaterJsonPreferNsis: true
-          uploadWorkflowArtifacts: ${{ env.IS_TAG != 'true' }}
+        run: |
+          $dist = Join-Path $env:RUNNER_TEMP 'dist'
+          $src = if ($env:SIGN -eq 'true') { 'installer-signed' } else { 'installer' }
+          $setupName = "SEPA-Validator-$env:VERSION-windows-x64-setup.exe"
+          $setup = Join-Path $dist $setupName
+          Copy-Item (Join-Path $env:RUNNER_TEMP "$src/setup.exe") $setup
+          if ($env:SIGN -eq 'true') {
+            $s = Get-AuthenticodeSignature $setup
+            if ($s.Status -ne 'Valid') { throw "installer: signature $($s.Status): $($s.StatusMessage)" }
+            "installer: signed by $($s.SignerCertificate.Subject)"
+          }
+          Push-Location app
+          npx tauri signer sign $setup
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+          $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/v$env:VERSION/$setupName"
+          node scripts/release-assets.mjs manifest $env:VERSION $url "$setup.sig" (Join-Path $dist 'latest.json')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item app/THIRD-PARTY-NOTICES.txt $dist
+          Get-ChildItem $dist | Format-Table Name, Length
 
-      - name: Portable exe
+      - name: Draft release
+        if: env.IS_TAG == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.meta.outputs.version }}
+          NOTES: ${{ steps.meta.outputs.notes }}
         run: |
-          portable="SEPA-Validator-$VERSION-windows-x64-portable.exe"
-          cp app/src-tauri/target/release/app.exe "$portable"
-          if [ "$IS_TAG" = "true" ]; then
-            gh release upload "$GITHUB_REF_NAME" "$portable" app/THIRD-PARTY-NOTICES.txt --clobber
+          {
+            printf '%s\n\n---\n' "$NOTES"
+            echo "[Code signing policy](https://github.com/$GITHUB_REPOSITORY/blob/master/CODE_SIGNING_POLICY.md)"
+          } > "$RUNNER_TEMP/notes.md"
+          assets=("$RUNNER_TEMP"/dist/*)
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            if [ "$(gh release view "$GITHUB_REF_NAME" --json isDraft -q .isDraft)" != "true" ]; then
+              echo "::error::Release $GITHUB_REF_NAME is already published; not replacing its assets."
+              exit 1
+            fi
+            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
           else
-            echo "PORTABLE=$portable" >> "$GITHUB_ENV"
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" --draft --verify-tag \
+              --title "SEPA Validator $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
           fi
 
-      - name: Keep the portable exe (dry run)
+      - name: Keep the bundles (dry run)
         if: env.IS_TAG != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: portable
-          path: ${{ env.PORTABLE }}
+          name: release-dry-run
+          path: ${{ runner.temp }}/dist/
+          if-no-files-found: error
+          overwrite: true
