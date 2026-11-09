@@ -1,0 +1,62 @@
+name: WinGet
+
+# When a release is published (draft -> published, see RELEASING.md), open a PR at
+# microsoft/winget-pkgs that updates LeonKasdorf.SEPAValidator to the new version.
+# Komac copies the previous manifest, so the package must already exist there
+# (first version: microsoft/winget-pkgs#475438). To retry, re-run the failed job.
+on:
+  release:
+    types: [released]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: winget-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  winget:
+    name: Submit to winget-pkgs
+    runs-on: ubuntu-latest
+    # Holds WINGET_TOKEN (classic token, public_repo scope). Limit the environment
+    # to tags matching v*.
+    environment: winget
+    env:
+      KOMAC_VERSION: 2.17.1
+      KOMAC_SHA256: e694e79cd451afabf47bead66ed34586fef4814f7b94e4b61a098f419978d5d7
+      PACKAGE_ID: LeonKasdorf.SEPAValidator
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - name: Install komac (pinned, checksum checked)
+        run: |
+          f="komac-$KOMAC_VERSION-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$f" "https://github.com/russellbanks/Komac/releases/download/v$KOMAC_VERSION/$f"
+          echo "$KOMAC_SHA256  $RUNNER_TEMP/$f" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/komac"
+          tar -xzf "$RUNNER_TEMP/$f" -C "$RUNNER_TEMP/komac"
+          bin=$(find "$RUNNER_TEMP/komac" -type f -name komac | head -n 1)
+          if [ -z "$bin" ]; then echo "::error::komac binary not found in $f"; exit 1; fi
+          chmod +x "$bin"
+          echo "KOMAC=$bin" >> "$GITHUB_ENV"
+          "$bin" --version
+
+      - name: Submit the update
+        env:
+          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if [ -z "$GITHUB_TOKEN" ]; then
+            echo "::error::Secret WINGET_TOKEN is missing in the winget environment (see RELEASING.md)."
+            exit 1
+          fi
+          version="${TAG#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tag $TAG is not vX.Y.Z."
+            exit 1
+          fi
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/SEPA-Validator-$version-windows-x64-setup.exe"
+          if ! curl -fsSIL -o /dev/null "$url"; then
+            echo "::error::Installer is not downloadable: $url"
+            exit 1
+          fi
+          "$KOMAC" update "$PACKAGE_ID" --version "$version" --urls "$url" --submit
