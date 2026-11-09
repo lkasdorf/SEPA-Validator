@@ -97,6 +97,7 @@ Tauri v2 backend (Rust, `src-tauri/`) + Svelte 5/TypeScript/Vite frontend (`src/
   - Authenticode signing is prepared for SignPath (two signing requests: binaries, then installer) and is on only when the repo variable `SIGNPATH_ORGANIZATION_ID` is set. It is currently off: the SignPath Foundation application was declined (2026-11, too little public visibility), so releases are unsigned. Policy: `CODE_SIGNING_POLICY.md`; setup and artifact configurations: `RELEASING.md`.
   - The version has a single source: `"version"` in `app/src-tauri/tauri.conf.json`. Bump it with `node scripts/bump-version.mjs X.Y.Z`.
   - The full procedure, the environment and signing-key handling are in `RELEASING.md`.
+- **WinGet** (`winget.yml`, on release `released`): Komac (pinned, checksum checked) opens a PR at microsoft/winget-pkgs that updates `LeonKasdorf.SEPAValidator`. It needs the `WINGET_TOKEN` secret (classic token, `public_repo`) in the `winget` environment.
 - `claude-review` (separate workflow) only posts a review comment; a green check does not always mean it reviewed.
 
 ## Conventions

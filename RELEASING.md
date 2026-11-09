@@ -26,6 +26,7 @@ The app version lives in one place: `"version"` in `app/src-tauri/tauri.conf.jso
 5. **Code signing (SignPath):** see [Code signing with SignPath](#code-signing-with-signpath).
    Until the `SIGNPATH_ORGANIZATION_ID` variable exists, releases stay unsigned
    (only the updater signature is made).
+6. **winget:** see [Publishing to winget](#publishing-to-winget).
 
 ## Each release
 
@@ -48,6 +49,44 @@ The app version lives in one place: `"version"` in `app/src-tauri/tauri.conf.jso
    - `latest.json` (updater manifest)
 4. Install the draft's setup exe and run the portable exe once. Then publish the draft
    and mark it as the latest release.
+5. Publishing starts `winget.yml`, which opens a PR at microsoft/winget-pkgs for the
+   new version. Watch that PR for bot feedback (CLA is signed once; validation labels
+   such as `Needs-Author-Feedback`) until a moderator merges it.
+
+## Publishing to winget
+
+The app is in the Windows Package Manager as `LeonKasdorf.SEPAValidator`
+(`winget install sepa-validator`). Version 2.6.1 was submitted by hand
+(microsoft/winget-pkgs#475438). Later versions are submitted by
+`.github/workflows/winget.yml` when a release is published (event `released`, so drafts
+and pre-releases are skipped). It runs [Komac](https://github.com/russellbanks/Komac)
+(pinned version, checksum checked), which copies the previous manifest, puts in the new
+installer URL and SHA256, and opens the PR from your fork `lkasdorf/winget-pkgs`.
+
+The update only works once the package exists in winget-pkgs, so the first automatic
+run must come after #475438 is merged. If it fails, re-run the job.
+
+One-time setup:
+
+1. **Create a classic token** at <https://github.com/settings/tokens/new> with only
+   the `public_repo` scope (Komac cannot open the PR with a fine-grained token). Give
+   it an expiry date and note it in your calendar.
+2. **Create the `winget` environment** (Settings → Environments → New environment):
+   Deployment branches and tags → *Selected branches and tags* → tag pattern `v*`.
+   No reviewers needed; publishing the release is the approval.
+3. **Store the token** in that environment (run it yourself; it prompts for the value):
+   ```sh
+   gh secret set WINGET_TOKEN --env winget --repo lkasdorf/SEPA-Validator
+   ```
+
+The token can push to all your public repositories, which is why it lives only in the
+`winget` environment. When it expires, the job fails with an authentication error;
+create a new one and set the secret again.
+
+The installed app shows the publisher "sepa" under Apps & features (Tauri derives it
+from the identifier). If `bundle.publisher` is set in `tauri.conf.json`, that name
+changes, and the winget PR for that version needs the new `Publisher` in
+`AppsAndFeaturesEntries`.
 
 ## Rotating the signing key
 
