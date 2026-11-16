@@ -647,8 +647,7 @@ impl Rules {
                 );
             }
             (Some("CdtrRefInf"), "Ref")
-                if value.len() >= 2
-                    && value[..2].eq_ignore_ascii_case("RF")
+                if value.get(..2).is_some_and(|p| p.eq_ignore_ascii_case("RF"))
                     && !rf_reference_is_valid(value) =>
             {
                 self.repeat_as(
@@ -1645,6 +1644,14 @@ mod tests {
         assert!(out[0].text.contains("(ISO 11649)"), "{}", out[0].text);
         // Other references aren't RF references.
         assert_eq!(check(&remittance(&strd.replace("RF19", "AB19"))), vec![]);
+        // Non-ASCII references don't panic (byte 2 inside a character).
+        for r in ["Müller-Rechnung", "Aß123", "ü"] {
+            let xml = remittance(&strd.replace("RF19539007547034", r));
+            assert!(
+                check(&xml).iter().all(|m| !m.text.contains("RF check")),
+                "{r}"
+            );
+        }
     }
 
     #[test]
