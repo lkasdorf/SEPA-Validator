@@ -17,6 +17,11 @@ pub fn detect_namespace(path: &Path) -> Option<String> {
     namespace_of(NsReader::from_file(path).ok()?)
 }
 
+/// Like `detect_namespace`, for a document in memory.
+pub fn namespace_in(xml: &[u8]) -> Option<String> {
+    namespace_of(NsReader::from_reader(xml))
+}
+
 fn namespace_of<R: BufRead>(mut reader: NsReader<R>) -> Option<String> {
     let mut buf = Vec::new();
     loop {
@@ -34,9 +39,10 @@ fn namespace_of<R: BufRead>(mut reader: NsReader<R>) -> Option<String> {
 
 /// True if the file targets a Swiss/Liechtenstein bank, i.e. the Swiss Payment
 /// Standards apply: the root's `xsi:schemaLocation` names a `.ch.` schema, or the
-/// first debtor account (`DbtrAcct/Id/IBAN`) is a CH/LI IBAN. Creditor accounts
+/// sender's own account in the first payment block is a CH/LI IBAN: `DbtrAcct`
+/// in a credit transfer, `CdtrAcct` in a direct debit. The other side's accounts
 /// don't count (a German debtor paying a Swiss creditor is not a Swiss file).
-/// Reading stops at the first debtor account, so large files aren't read in full.
+/// Reading stops at that account, so large files aren't read in full.
 pub fn is_swiss(xml: &[u8]) -> bool {
     let mut reader = Reader::from_reader(xml);
     reader.config_mut().trim_text(true);
@@ -50,8 +56,8 @@ pub fn is_swiss(xml: &[u8]) -> bool {
                 if stack.is_empty() && root_names_swiss_schema(&e) {
                     return true;
                 }
-                if name == b"CdtTrfTxInf" {
-                    return false; // past the first debtor account
+                if name == b"CdtTrfTxInf" || name == b"DrctDbtTxInf" {
+                    return false; // past the sender's account
                 }
                 stack.push(name);
             }
@@ -61,13 +67,15 @@ pub fn is_swiss(xml: &[u8]) -> bool {
                 }
             }
             Ok(Event::End(e)) => {
-                if e.local_name().as_ref() == b"DbtrAcct" {
-                    return false; // debtor account without an IBAN
+                if matches!(e.local_name().as_ref(), b"DbtrAcct" | b"CdtrAcct") {
+                    return false; // the sender's account has no IBAN
                 }
                 stack.pop();
             }
             Ok(Event::Text(t)) => {
-                if stack.ends_with(&[b"DbtrAcct".to_vec(), b"Id".to_vec(), b"IBAN".to_vec()]) {
+                let account = stack.len() >= 3
+                    && matches!(stack[stack.len() - 3].as_slice(), b"DbtrAcct" | b"CdtrAcct");
+                if account && stack.ends_with(&[b"Id".to_vec(), b"IBAN".to_vec()]) {
                     let iban = t.unescape().unwrap_or_default().to_ascii_uppercase();
                     return iban.starts_with("CH") || iban.starts_with("LI");
                 }

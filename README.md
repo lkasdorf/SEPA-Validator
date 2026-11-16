@@ -28,7 +28,7 @@ The original PowerShell/WinForms tool was retired in favour of the desktop app. 
 - **Überweisungen und Lastschriften** (pain.001, pain.008), Statusmeldungen (pain.002), Storno-Aufträge (pain.007) sowie **Kontoauszüge und Umsatzmeldungen** (camt.052, camt.053, camt.054).
 - **Das passende Schema je Datei:** Die Deutsche Kreditwirtschaft hat für pain.001.001.09 drei Varianten mit demselben Namespace (SEPA, Eilüberweisung CCU, Auslandszahlung AXZ). Die App erkennt die Variante am Inhalt. Schweizer Dateien (Swiss Payment Standards) erkennt sie an der IBAN des Auftraggebers.
 - **Plausibilität**, die kein XSD abdeckt: Anzahl und Kontrollsumme gegen die tatsächlichen Buchungen, IBAN-Prüfziffer, Ausführungs- oder Fälligkeitsdatum in der Vergangenheit, doppelte EndToEndIds. Bei Kontoauszügen: Anfangssaldo plus Buchungen muss den Schlusssaldo ergeben.
-- **DK-Belegungsrichtlinien**, die das Schema zulässt, die Banken aber ablehnen, als Fehler: z. B. bei Mandatsänderungen in Lastschriften `SMNDA` zusammen mit der alten BIC (`OrgnlDbtrAgt`).
+- **DK-Belegungsrichtlinien** für SEPA-Überweisungen und -Lastschriften, die das Schema zulässt, die Banken aber ablehnen, als Fehler: z. B. Zeichensatz, Schrägstriche in Referenzen, CORE und B2B gemischt, Gläubiger-ID mit falscher Prüfziffer oder bei Mandatsänderungen `SMNDA` zusammen mit der alten BIC (`OrgnlDbtrAgt`).
 - **Verständliche Meldungen mit Hinweis**, z. B. „Use a dot as the decimal separator“. Ein Klick auf einen Fehler springt zur Zeile im formatierten XML.
 
 **Außerdem:** Übersicht über Auftraggeber, Zahlungsblöcke und Summen; Umsatzliste mit GVC-Namen (nach Import der DK-Tabelle) und CSV-Export für Excel; Bearbeiten im Viewer (gespeichert wird immer eine Kopie); synthetische camt.053-Kontoauszüge aus einer Zahlungsdatei, um Kontoauszugs-Importe zu testen.
@@ -57,8 +57,13 @@ A native Windows application that validates one or many files at once and lets y
   - Execution or collection dates in the past.
   - Duplicate EndToEndIds.
   - Statements (camt): opening balance plus booked entries must equal the closing balance, and the transaction summary must match the entries.
-- **DK usage rules** that the schema accepts but banks following the German DK rules reject, reported as **errors**:
-  - Direct debit mandate amendments (`AmdmntInfDtls`): `OrgnlDbtrAgt` must not be filled together with `OrgnlDbtrAcct` (for example `SMNDA` plus the old BIC).
+- **DK usage rules** that the schema accepts but banks following the German DK rules reject, reported as **errors**. They apply to SEPA credit transfers and direct debits, not to Swiss files or the DK urgent and foreign subsets:
+  - Character set: only the Latin characters, plus umlauts, ß, `& * $ %`; references and IDs without those extras.
+  - No namespace prefixes on the elements.
+  - References and IDs (`MsgId`, `PmtInfId`, `InstrId`, `EndToEndId`, `MndtId`) must not start or end with `/` or contain `//`.
+  - Credit transfers: no `LclInstrm`, except `INST` for instant payments.
+  - Direct debits: service level `SEPA`, `CORE` or `B2B` but not both in one file, `PmtTpInf` and `CdtrSchmeId` either in `PmtInf` or in the transaction, a valid creditor identifier (check digits), `AmdmntInfDtls` when `AmdmntInd` is true, and the debtor's address when the debtor's bank is outside the EU/EEA.
+  - Mandate amendments (`AmdmntInfDtls`): `OrgnlDbtrAgt` must not be filled together with `OrgnlDbtrAcct` (for example `SMNDA` plus the old BIC).
 - **Readable messages with hints.** For example: "Use a dot as the decimal separator, e.g. 1250.00." or "Required element <InitgPty> is missing in <GrpHdr>."
 - **Live log, click to the error.** Results stream in as files are validated. Click any error to jump to its line in a syntax-highlighted, pretty-printed XML viewer. Search with `Ctrl+F`, fold blocks, and **Cancel** a long run.
 - **Overview, Remittance and Transactions tabs.**
