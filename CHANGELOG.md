@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **More DK usage rules.** Further limits that the DK schemas set but the ISO schemas don't, reported as errors for SEPA credit transfers and direct debits:
+  - Names of parties (debtor, creditor, ultimate parties, initiating party) longer than 70 characters.
+  - Amounts with more than 2 decimal places or outside 0.01 to 999,999,999.99; direct debits in a currency other than EUR.
+  - From pain.001.001.09 and pain.008.001.08 on: a postal address without town (`TwnNm`) or country (`Ctry`), or with more than 2 address lines.
+  - Remittance information: more than one `Ustrd` or `Strd`, both together, anything but the creditor reference in `Strd`, a reference type other than `SCOR`, or more than 140 characters in `Strd`. An RF creditor reference with wrong check digits is a warning.
+  - `UltmtDbtr` (credit transfers), `UltmtCdtr` (direct debits) and `ChrgBr` given both in `PmtInf` and in the transaction; `ChrgBr` other than `SLEV` in a direct debit.
+  - A creditor identifier whose scheme name is not `SEPA`.
+  - Findings that repeat throughout a file are reported once, at the first occurrence, with the number of further ones.
+
 ## [2.7.0] - 2026-11-16
 
 ### Added
