@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **DK usage rules are checked, starting with mandate amendments.** Some files pass the XSD but break the usage rules of the German banking industry (DK), and banks reject them. Such violations are now reported as errors. The first rule: in a direct debit's mandate amendment (`AmdmntInfDtls`), `OrgnlDbtrAgt` must not be filled together with `OrgnlDbtrAcct`, for example `SMNDA` plus the old BIC.
+
 ### Changed
 - **Publisher shown as "Leon Kasdorf".** Apps & features and the file properties of the program now name Leon Kasdorf as the publisher instead of "sepa". The automatic update installs over the existing version as before. If you upgrade by running the new installer yourself and it shows "Unable to uninstall!", choose **Do not uninstall** on the next page to install over the old version.
 

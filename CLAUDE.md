@@ -56,6 +56,7 @@ Tauri v2 backend (Rust, `src-tauri/`) + Svelte 5/TypeScript/Vite frontend (`src/
     - IBAN mod-97
     - past dates (DK `1999-01-01` = as soon as possible)
     - duplicate EndToEndId
+  - `rules`: DK usage rules (Anlage 3, column "EPC-/DK-Regeln") the XSD can't express, reported as **errors** (status Invalid); called from `plausibility::check`. So far: in `AmdmntInfDtls`, `OrgnlDbtrAgt` together with `OrgnlDbtrAcct` (e.g. SMNDA + old BIC). The DK spec PDFs are in the gitignored `Reference/`.
   - `payments`: the Overview/Remittance summary.
   - `statements`: camt.052/053/054 (Rpt/Stmt/Ntfctn): plausibility (opening + booked entries = CLBD, TxsSummry counts/sums/net) and the statement Overview; entries become Transactions rows with booking date and CRDT/DBIT.
   - `statement_gen`: synthetic camt.053.001.08 statements from a pain.001/pain.008 ("as if the bank had booked it"): one statement per account and booking day, days chained (CLBD → next OPBD), EUR only, bank-side IDs marked `SYNTH-`. Problem files are refused with reasons, never cleaned up.

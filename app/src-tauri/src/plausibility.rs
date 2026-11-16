@@ -1,7 +1,8 @@
 //! Plausibility checks the XSD can't express, reported as warnings with the
 //! line in the formatted text: control values (NbOfTxs/CtrlSum) against the
 //! actual transactions, IBAN check digits, past execution dates and duplicate
-//! EndToEndIds.
+//! EndToEndIds. `check` also runs the statement checks (`statements`) and the
+//! DK usage rules (`rules`, reported as errors).
 
 use std::collections::HashMap;
 
@@ -48,6 +49,7 @@ pub fn check(xml: &str, today: &str) -> Vec<Message> {
     }
     let mut out = c.finish();
     out.extend(crate::statements::check(xml));
+    out.extend(crate::rules::check(xml));
     out.sort_by_key(|m| m.line);
     out
 }
@@ -631,5 +633,16 @@ mod tests {
         assert!(iban_is_valid("CH9300762011623852957"));
         assert!(!iban_is_valid("DE89370400440532013001"));
         assert!(!iban_is_valid("XX"));
+    }
+
+    #[test]
+    fn dk_rule_violations_are_reported_as_errors() {
+        let xml = "<Document xmlns=\"urn:iso:std:iso:20022:tech:xsd:pain.008.001.08\"><CstmrDrctDbtInitn>\
+            <AmdmntInfDtls><OrgnlDbtrAcct><Id><Othr><Id>SMNDA</Id></Othr></Id></OrgnlDbtrAcct>\
+            <OrgnlDbtrAgt><FinInstnId><BICFI>COBADEFFXXX</BICFI></FinInstnId></OrgnlDbtrAgt></AmdmntInfDtls>\
+            </CstmrDrctDbtInitn></Document>";
+        let out = check(xml, TODAY);
+        assert_eq!(out.len(), 1, "{out:?}");
+        assert_eq!(out[0].severity, Severity::Error);
     }
 }
