@@ -2,6 +2,7 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { openUrl, schemaStatus } from "./api";
   import { aboutDialogOpen, aboutTab, updateDialogOpen, type AboutTab } from "./stores";
+  import { settingsDialogOpen } from "./settings";
 
   const REPO = "https://github.com/lkasdorf/SEPA-Validator";
 
@@ -20,6 +21,11 @@
 
   function link(url: string) {
     void openUrl(url).catch(() => {});
+    close();
+  }
+
+  function showSettings() {
+    settingsDialogOpen.set(true);
     close();
   }
 
@@ -62,6 +68,7 @@
     <div class="catcher" on:click={close}></div>
     <div class="dropdown" role="menu">
       <button role="menuitem" on:click={() => showAbout("about")}>About SEPA Validator</button>
+      <button role="menuitem" on:click={showSettings}>Settings…</button>
       <button role="menuitem" on:click={checkUpdates}>Check for Updates…</button>
       <div class="sep"></div>
       <button role="menuitem" on:click={() => showAbout("shortcuts")}>Keyboard Shortcuts</button>

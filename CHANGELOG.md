@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `UltmtDbtr` (credit transfers), `UltmtCdtr` (direct debits) and `ChrgBr` given both in `PmtInf` and in the transaction; `ChrgBr` other than `SLEV` in a direct debit.
   - A creditor identifier whose scheme name is not `SEPA`.
   - Findings that repeat throughout a file are reported once, at the first occurrence, with the number of further ones.
+- **Settings: switch DK rule groups off.** Menu → **Settings…** has six groups of DK usage rules (character set, references and IDs, payment type and levels, creditor ID and mandate, amounts and names, addresses and remittance information). All are on by default; switch a group off if your bank doesn't apply it. XSD validation and the other checks always run. The choice is kept for the next start, and after a change the dialog offers to validate the open files again.
 
 ## [2.7.0] - 2026-11-16
 

@@ -1,4 +1,6 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
+import { get } from "svelte/store";
+import { disabledRules } from "./settings";
 import type {
   ValidationEvent,
   ValidationResult,
@@ -17,7 +19,7 @@ export async function startValidation(
 ): Promise<void> {
   const channel = new Channel<ValidationEvent>();
   channel.onmessage = onEvent;
-  await invoke("start_validation", { paths, onEvent: channel });
+  await invoke("start_validation", { paths, disabledRules: get(disabledRules), onEvent: channel });
 }
 
 /** Stop the running validation after the file it is currently validating. */
@@ -32,12 +34,12 @@ export function saveFormatted(source: string, target: string): Promise<void> {
 
 /** Validate text edited in the viewer for `path` without saving it. */
 export function validateEdited(path: string, text: string): Promise<EditedValidation> {
-  return invoke<EditedValidation>("validate_edited", { path, text });
+  return invoke<EditedValidation>("validate_edited", { path, text, disabledRules: get(disabledRules) });
 }
 
 /** Save edited text as `NAME_editN.xml` next to `source`; returns the new file's validation. */
 export function saveEdited(source: string, text: string): Promise<ValidationResult> {
-  return invoke<ValidationResult>("save_edited", { source, text });
+  return invoke<ValidationResult>("save_edited", { source, text, disabledRules: get(disabledRules) });
 }
 
 export function readFormatted(path: string): Promise<string> {

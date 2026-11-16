@@ -13,6 +13,8 @@
   import SaveFormatted from "./lib/SaveFormatted.svelte";
   import EditActions from "./lib/EditActions.svelte";
   import StatementDialog from "./lib/StatementDialog.svelte";
+  import SettingsDialog from "./lib/SettingsDialog.svelte";
+  import { settingsDialogOpen } from "./lib/settings";
   import { isPaymentFile } from "./lib/statementGen";
   import EmptyState from "./lib/EmptyState.svelte";
   import { results, progress, dragging, selectedResult, runId, openViewerSearch, foldAllInViewer, unfoldAllInViewer, schemaDialogOpen, viewerLarge, aboutDialogOpen, updateDialogOpen, statementDialogOpen } from "./lib/stores";
@@ -112,4 +114,5 @@
   {#if $aboutDialogOpen}<AboutDialog />{/if}
   {#if $statementDialogOpen}<StatementDialog />{/if}
   {#if $updateDialogOpen}<UpdateDialog />{/if}
+  {#if $settingsDialogOpen}<SettingsDialog />{/if}
 </div>
