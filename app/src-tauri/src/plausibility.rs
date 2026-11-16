@@ -565,7 +565,11 @@ mod tests {
     #[test]
     fn direct_debits_use_the_collection_date_and_their_own_amounts() {
         let xml = "<Document xmlns=\"urn:iso:std:iso:20022:tech:xsd:pain.008.001.02\">\n<CstmrDrctDbtInitn>\n<GrpHdr>\n<NbOfTxs>1</NbOfTxs>\n<CtrlSum>5.00</CtrlSum>\n</GrpHdr>\n<PmtInf>\n<ReqdColltnDt>2026-10-02</ReqdColltnDt>\n<DrctDbtTxInf>\n<PmtId>\n<EndToEndId>D1</EndToEndId>\n</PmtId>\n<InstdAmt Ccy=\"EUR\">5.00</InstdAmt>\n</DrctDbtTxInf>\n</PmtInf>\n</CstmrDrctDbtInitn>\n</Document>\n";
-        let texts: Vec<String> = check(xml, TODAY).into_iter().map(|m| m.text).collect();
+        let texts: Vec<String> = check(xml, TODAY)
+            .into_iter()
+            .filter(|m| m.severity == Severity::Warning) // not the DK rule errors
+            .map(|m| m.text)
+            .collect();
         assert_eq!(
             texts,
             vec!["Requested collection date 2026-10-02 is in the past."]
