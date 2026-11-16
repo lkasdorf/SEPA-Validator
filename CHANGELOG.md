@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-11-16
+
 ### Added
 - **More DK usage rules.** Further limits that the DK schemas set but the ISO schemas don't, reported as errors for SEPA credit transfers and direct debits:
   - Names of parties (debtor, creditor, ultimate parties, initiating party) longer than 70 characters.
@@ -190,7 +192,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release: native Windows GUI SEPA XML Validator (PowerShell/WinForms) with full XSD validation, drag & drop, file/folder selection, batch validation, and TXT export.
 - Bash CLI scripts for validation, batch validation, and renaming XML files by date/company/schema.
 
-[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.7.0...HEAD
+[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.8.0...HEAD
+[2.8.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.7.0...v2.8.0
 [2.7.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.6.1...v2.7.0
 [2.6.1]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.6.0...v2.6.1
 [2.6.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.5.0...v2.6.0
