@@ -5,6 +5,7 @@ mod messages;
 mod model;
 mod payments;
 mod plausibility;
+mod rules;
 mod scanner;
 mod schema;
 mod statement_gen;
