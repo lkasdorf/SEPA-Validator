@@ -1,6 +1,8 @@
 //! Usage rules of the German banking industry (DK, "DFÜ-Abkommen Anlage 3"
 //! V3.9, column "EPC-/DK-Regeln") that the XSD can't express. A file that
 //! breaks them is schema-valid, but banks may reject it, so they are errors.
+//! Only wrong RF check digits in a creditor reference are a warning: banks
+//! needn't check them.
 //!
 //! The rules cover SEPA credit transfers and direct debits (pain.001,
 //! pain.008). Swiss files and the DK urgent/foreign credit transfer subsets
@@ -43,12 +45,23 @@ const CHARS_HINT: &str = "Allowed are a-z, A-Z, 0-9, space and ' : ? , - ( + . )
 const ID_CHARS_HINT: &str =
     "References and IDs allow only a-z, A-Z, 0-9, space and ' : ? , - ( + . ) /.";
 
+/// Parties whose names DK limits to 70 characters and whose postal addresses
+/// need a town and country.
+const PARTIES: &[&str] = &[
+    "InitgPty",
+    "Dbtr",
+    "Cdtr",
+    "UltmtDbtr",
+    "UltmtCdtr",
+    "OrgnlCdtrSchmeId",
+];
+
 /// Check a (formatted) document against the DK usage rules.
 pub fn check(xml: &str) -> Vec<Message> {
-    let Some(kind) = Kind::of(xml) else {
+    let Some((kind, iso2019)) = Kind::of(xml) else {
         return Vec::new();
     };
-    let mut rules = Rules::new(kind);
+    let mut rules = Rules::new(kind, iso2019);
     let mut reader = Reader::from_str(xml);
     let mut lines = LineCounter::new(xml);
     let mut stack: Vec<String> = Vec::new();
@@ -79,7 +92,7 @@ pub fn check(xml: &str) -> Vec<Message> {
             Ok(_) => {}
         }
     }
-    rules.out
+    rules.finish()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -89,8 +102,10 @@ enum Kind {
 }
 
 impl Kind {
-    /// The kind of SEPA file the rules apply to, or None for anything else.
-    fn of(xml: &str) -> Option<Self> {
+    /// The kind of SEPA file the rules apply to, or None for anything else, and
+    /// whether it is an ISO 2019 version (pain.001.001.09, pain.008.001.08 or
+    /// later), for which DK requires structured postal addresses.
+    fn of(xml: &str) -> Option<(Self, bool)> {
         let bytes = xml.as_bytes();
         let ns = validator::namespace_in(bytes)?;
         let kind = if ns.starts_with(PAIN008) {
@@ -108,7 +123,12 @@ impl Kind {
         {
             return None;
         }
-        Some(kind)
+        let version: u32 = ns.rsplit('.').next()?.parse().ok()?;
+        let iso2019 = match kind {
+            Kind::CreditTransfer => version >= 9,
+            Kind::DirectDebit => version >= 8,
+        };
+        Some((kind, iso2019))
     }
 }
 
@@ -133,7 +153,11 @@ fn error(out: &mut Vec<Message>, line: u32, text: String, hint: &str) {
 
 struct Rules {
     kind: Kind,
+    /// ISO 2019 versions: postal addresses need a town and country.
+    iso2019: bool,
     out: Vec<Message>,
+    /// Findings that may repeat throughout a file, reported once each.
+    repeated: Vec<Repeated>,
     prefix_reported: bool,
     block: Block,
     tx: Option<Tx>,
@@ -144,13 +168,18 @@ struct Rules {
     mixing_reported: bool,
     /// Invalid creditor identifiers already reported (each once).
     bad_creditor_ids: HashSet<String>,
+    remittance: Option<Remittance>,
+    structured: Option<Structured>,
+    address: Option<Address>,
 }
 
 impl Rules {
-    fn new(kind: Kind) -> Self {
+    fn new(kind: Kind, iso2019: bool) -> Self {
         Rules {
             kind,
+            iso2019,
             out: Vec::new(),
+            repeated: Vec::new(),
             prefix_reported: false,
             block: Block::default(),
             tx: None,
@@ -159,7 +188,63 @@ impl Rules {
             first_type: None,
             mixing_reported: false,
             bad_creditor_ids: HashSet::new(),
+            remittance: None,
+            structured: None,
+            address: None,
         }
+    }
+
+    /// The findings, with each repeated one once and a count of the others.
+    fn finish(mut self) -> Vec<Message> {
+        for r in self.repeated {
+            let more = match r.more {
+                0 => String::new(),
+                n => format!("; {n} more in this file"),
+            };
+            self.out.push(Message {
+                severity: r.severity,
+                text: format!("{} ({}{more}).", r.text, r.source),
+                line: Some(r.line),
+                column: None,
+                hint: Some(r.hint.into()),
+            });
+        }
+        self.out
+    }
+
+    /// A DK rule error that may repeat: reported at its first line only.
+    fn repeat(
+        &mut self,
+        key: &'static str,
+        line: u32,
+        text: impl FnOnce() -> String,
+        hint: &'static str,
+    ) {
+        self.repeat_as(key, Severity::Error, "DK rules", line, text, hint);
+    }
+
+    fn repeat_as(
+        &mut self,
+        key: &'static str,
+        severity: Severity,
+        source: &'static str,
+        line: u32,
+        text: impl FnOnce() -> String,
+        hint: &'static str,
+    ) {
+        if let Some(r) = self.repeated.iter_mut().find(|r| r.key == key) {
+            r.more += 1;
+            return;
+        }
+        self.repeated.push(Repeated {
+            key,
+            severity,
+            source,
+            line,
+            text: text(),
+            hint,
+            more: 0,
+        });
     }
 
     /// An element starts; returns its local name.
@@ -179,6 +264,21 @@ impl Rules {
             );
         }
         let name = String::from_utf8_lossy(e.local_name().as_ref()).into_owned();
+        if self.kind == Kind::DirectDebit && name == "InstdAmt" {
+            let ccy = e
+                .try_get_attribute("Ccy")
+                .ok()
+                .flatten()
+                .and_then(|a| a.unescape_value().ok().map(|v| v.trim().to_string()));
+            if let Some(ccy) = ccy.filter(|c| c != "EUR") {
+                self.repeat(
+                    "currency",
+                    line,
+                    || format!("InstdAmt is in {ccy}; SEPA direct debits are in EUR"),
+                    "Collect SEPA direct debits in EUR only.",
+                );
+            }
+        }
         self.start(&name, stack, line);
         name
     }
@@ -205,10 +305,59 @@ impl Rules {
                 }
                 self.amendment = Some(Amendment::default());
             }
+            (Some("PmtInf"), "UltmtDbtr" | "UltmtCdtr") => self.block.ultimate = true,
+            (Some("PmtInf"), "ChrgBr") => self.block.charge_bearer = true,
+            (_, "RmtInf") => self.remittance = Some(Remittance::default()),
+            (Some("RmtInf"), "Ustrd") => {
+                if let Some(r) = self.remittance.as_mut() {
+                    r.unstructured.push(line);
+                }
+            }
+            (Some("PstlAdr"), "TwnNm" | "Ctry" | "AdrLine") => {
+                if let Some(a) = self.address.as_mut() {
+                    match name {
+                        "TwnNm" => a.town = true,
+                        "Ctry" => a.country = true,
+                        _ => a.lines += 1,
+                    }
+                }
+            }
+            (Some(owner), "PstlAdr") if self.iso2019 && PARTIES.contains(&owner) => {
+                self.address = Some(Address {
+                    owner: owner.to_string(),
+                    line,
+                    ..Address::default()
+                })
+            }
             _ => {}
+        }
+        // DK Anlage 3, 2.2.1.7: the structured remittance information holds
+        // only the creditor reference, at most 140 characters with its tags.
+        if let Some(s) = self.structured.as_mut() {
+            s.length += 2 * name.len() + 5; // <name> and </name>
+        }
+        if self.structured.is_some() {
+            if parent == Some("Strd") && name != "CdtrRefInf" {
+                self.repeat(
+                    "structured-branch",
+                    line,
+                    || format!("Strd contains {name}; SEPA allows only CdtrRefInf there"),
+                    "Structured remittance information may only hold the creditor reference \
+                     (CdtrRefInf). Put other information in Ustrd instead.",
+                );
+            }
+        } else if parent == Some("RmtInf") && name == "Strd" {
+            self.structured = Some(Structured { line, length: 0 });
+            if let Some(r) = self.remittance.as_mut() {
+                r.structured.push(line);
+            }
         }
         if let Some(tx) = self.tx.as_mut() {
             match (parent, name) {
+                (Some("CdtTrfTxInf"), "UltmtDbtr") | (Some("DrctDbtTxInf"), "UltmtCdtr") => {
+                    tx.ultimate = Some(line)
+                }
+                (Some("CdtTrfTxInf" | "DrctDbtTxInf"), "ChrgBr") => tx.charge_bearer = Some(line),
                 (Some("CdtTrfTxInf" | "DrctDbtTxInf"), "PmtTpInf") => tx.payment_type = Some(line),
                 (Some("DrctDbtTx"), "CdtrSchmeId") => tx.scheme_id = Some(line),
                 (Some("DrctDbtTxInf"), "Dbtr") => tx.debtor = Some(line),
@@ -238,8 +387,103 @@ impl Rules {
                     self.transaction(tx);
                 }
             }
-            Some("PmtInf") => std::mem::take(&mut self.block).finish(&mut self.out),
+            Some("PmtInf") => {
+                let ultimate = match self.kind {
+                    Kind::CreditTransfer => "UltmtDbtr",
+                    Kind::DirectDebit => "UltmtCdtr",
+                };
+                std::mem::take(&mut self.block).finish(&mut self.out, ultimate);
+            }
+            Some("RmtInf") => {
+                if let Some(r) = self.remittance.take() {
+                    self.remittance_finish(r);
+                }
+            }
+            Some("Strd") => {
+                if let Some(s) = self.structured.take() {
+                    if s.length > 140 {
+                        self.repeat(
+                            "structured-length",
+                            s.line,
+                            || {
+                                format!(
+                                    "Strd is {} characters long with its tags; SEPA allows at most 140",
+                                    s.length
+                                )
+                            },
+                            "Counted are the tags and content inside <Strd>, without <Strd> \
+                             and </Strd> themselves.",
+                        );
+                    }
+                }
+            }
+            Some("PstlAdr") => {
+                if let Some(a) = self.address.take() {
+                    self.address_finish(a);
+                }
+            }
             _ => {}
+        }
+    }
+
+    /// DK Anlage 3, 2.2.1.7: one Ustrd or one Strd, not both.
+    fn remittance_finish(&mut self, r: Remittance) {
+        if let Some(&line) = r.unstructured.get(1) {
+            self.repeat(
+                "unstructured-twice",
+                line,
+                || "RmtInf has more than one Ustrd".into(),
+                "SEPA allows one Ustrd of up to 140 characters per transaction.",
+            );
+        }
+        if let Some(&line) = r.structured.get(1) {
+            self.repeat(
+                "structured-twice",
+                line,
+                || "RmtInf has more than one Strd".into(),
+                "SEPA allows one structured creditor reference per transaction.",
+            );
+        }
+        if let (Some(_), Some(&line)) = (r.unstructured.first(), r.structured.first()) {
+            self.repeat(
+                "unstructured-and-structured",
+                line,
+                || "RmtInf has both Ustrd and Strd; SEPA allows one or the other".into(),
+                "Give either the remittance text (Ustrd) or a structured creditor reference \
+                 (Strd), not both.",
+            );
+        }
+    }
+
+    /// DK Anlage 3 from ISO 2019 (GBIC_5): a postal address has a town and a
+    /// country, and at most 2 address lines.
+    fn address_finish(&mut self, a: Address) {
+        let missing = match (a.town, a.country) {
+            (true, true) => None,
+            (false, true) => Some("TwnNm"),
+            (true, false) => Some("Ctry"),
+            (false, false) => Some("TwnNm and Ctry"),
+        };
+        if let Some(missing) = missing {
+            let owner = &a.owner;
+            self.repeat(
+                "address-town-country",
+                a.line,
+                || format!("{owner}/PstlAdr has no {missing}"),
+                "From pain.001.001.09 and pain.008.001.08 on (GBIC_5, since 5 Oct 2025) a postal \
+                 address needs at least the town (TwnNm) and country (Ctry). Up to 2 AdrLine may \
+                 add the rest, e.g. street and number.",
+            );
+        }
+        if a.lines > 2 {
+            let (owner, lines) = (&a.owner, a.lines);
+            self.repeat(
+                "address-lines",
+                a.line,
+                || format!("{owner}/PstlAdr has {lines} AdrLine; DK allows at most 2"),
+                "Put street, building number and postcode in their own elements \
+                 (StrtNm, BldgNb, PstCd) and keep at most 2 AdrLine.",
+            );
         }
     }
 
@@ -254,6 +498,10 @@ impl Rules {
         if trimmed.is_empty() {
             return; // indentation between elements
         }
+        if let Some(s) = self.structured.as_mut() {
+            s.length += trimmed.chars().count();
+        }
+        self.content(stack, element, trimmed, line);
         if is_creditor_id(stack) {
             self.creditor_id(trimmed, line);
             return;
@@ -293,6 +541,92 @@ impl Rules {
             if ends_with(stack, &["DrctDbtTxInf", "DbtrAcct", "Id", "IBAN"]) {
                 tx.debtor_iban = Some(trimmed.to_string());
             }
+        }
+    }
+
+    /// Rules on single values: names, amounts, the creditor reference, the
+    /// creditor identifier's scheme and the direct debit charge bearer.
+    fn content(&mut self, stack: &[String], element: &str, value: &str, line: u32) {
+        let parent = stack.len().checked_sub(2).map(|i| stack[i].as_str());
+        match (parent, element) {
+            (Some(party), "Nm") if PARTIES.contains(&party) => {
+                let length = value.chars().count();
+                if length > 70 {
+                    self.repeat(
+                        "name-length",
+                        line,
+                        || format!("{party}/Nm has {length} characters; DK allows at most 70"),
+                        "Shorten the name to 70 characters. The ISO schema allows 140, but the \
+                         DK schemas and banks don't.",
+                    );
+                }
+            }
+            (_, "InstdAmt") => match amount_problem(value) {
+                Some(Amount::Decimals) => self.repeat(
+                    "amount-decimals",
+                    line,
+                    || format!("InstdAmt {value} has more than 2 decimal places"),
+                    "SEPA amounts have at most 2 decimal places, e.g. 10.50.",
+                ),
+                Some(Amount::Range) => self.repeat(
+                    "amount-range",
+                    line,
+                    || format!("InstdAmt {value} is outside 0.01 to 999999999.99"),
+                    "A SEPA amount is at least 0.01 and at most 999,999,999.99 EUR.",
+                ),
+                None => {}
+            },
+            (Some("CdOrPrtry"), "Cd" | "Prtry")
+                if ends_with(stack, &["CdtrRefInf", "Tp", "CdOrPrtry", element])
+                    && !(element == "Cd" && value == "SCOR") =>
+            {
+                self.repeat(
+                    "reference-type",
+                    line,
+                    || {
+                        format!(
+                            "CdtrRefInf type {element} '{value}' is not allowed; only Cd SCOR is"
+                        )
+                    },
+                    "A structured creditor reference has the type Cd SCOR.",
+                );
+            }
+            (Some("CdtrRefInf"), "Ref")
+                if value.len() >= 2
+                    && value[..2].eq_ignore_ascii_case("RF")
+                    && !rf_reference_is_valid(value) =>
+            {
+                self.repeat_as(
+                    "rf-reference",
+                    Severity::Warning,
+                    "ISO 11649",
+                    line,
+                    || format!("Creditor reference '{value}' has wrong RF check digits or format"),
+                    "An RF creditor reference is RF, 2 check digits (MOD 97-10) and up to 21 \
+                     letters or digits. With wrong check digits the payee may not match the payment.",
+                );
+            }
+            (Some("SchmeNm"), "Prtry") if is_creditor_scheme_name(stack) && value != "SEPA" => {
+                self.repeat(
+                    "scheme-name",
+                    line,
+                    || format!("Creditor identifier scheme '{value}' must be SEPA"),
+                    "Set SchmeNm/Prtry of the creditor identifier to SEPA.",
+                );
+            }
+            (_, "ChrgBr") if self.kind == Kind::DirectDebit && value != "SLEV" => {
+                self.repeat(
+                    "charge-bearer",
+                    line,
+                    || {
+                        format!(
+                            "ChrgBr '{value}' is not allowed in a SEPA direct debit; only SLEV is"
+                        )
+                    },
+                    "Use SLEV or leave ChrgBr out.",
+                );
+            }
+            _ => {}
         }
     }
 
@@ -410,6 +744,12 @@ impl Rules {
             (false, None) if direct_debit => block.no_type.add(tx.line),
             _ => {}
         }
+        if let (true, Some(line)) = (block.ultimate, tx.ultimate) {
+            block.both_ultimates.add(line);
+        }
+        if let (true, Some(line)) = (block.charge_bearer, tx.charge_bearer) {
+            block.both_charges.add(line);
+        }
         if !direct_debit {
             return;
         }
@@ -459,6 +799,48 @@ fn is_creditor_id(stack: &[String]) -> bool {
             stack[stack.len() - tail.len() - 1].as_str(),
             "CdtrSchmeId" | "OrgnlCdtrSchmeId"
         )
+}
+
+/// SchmeNm/Prtry of a creditor identifier (CdtrSchmeId or OrgnlCdtrSchmeId).
+fn is_creditor_scheme_name(stack: &[String]) -> bool {
+    let tail = ["Id", "PrvtId", "Othr", "SchmeNm", "Prtry"];
+    stack.len() > tail.len()
+        && ends_with(stack, &tail)
+        && matches!(
+            stack[stack.len() - tail.len() - 1].as_str(),
+            "CdtrSchmeId" | "OrgnlCdtrSchmeId"
+        )
+}
+
+enum Amount {
+    Decimals,
+    Range,
+}
+
+/// DK Anlage 3: SEPA amounts have at most 2 decimal places and lie between
+/// 0.01 and 999999999.99. Values that aren't plain decimals are left to the XSD.
+fn amount_problem(value: &str) -> Option<Amount> {
+    let (int, frac) = value.split_once('.').unwrap_or((value, ""));
+    let digits = |s: &str| s.bytes().all(|b| b.is_ascii_digit());
+    if int.is_empty() && frac.is_empty() || !digits(int) || !digits(frac) {
+        return None;
+    }
+    if frac.len() > 2 {
+        return Some(Amount::Decimals);
+    }
+    let int = int.trim_start_matches('0');
+    let zero = int.is_empty() && frac.bytes().all(|b| b == b'0');
+    (int.len() > 9 || zero).then_some(Amount::Range)
+}
+
+/// ISO 11649 creditor reference: RF, 2 check digits, 1 to 21 letters or
+/// digits, with the same MOD 97-10 check as an IBAN.
+fn rf_reference_is_valid(reference: &str) -> bool {
+    let r = reference.as_bytes();
+    (5..=25).contains(&r.len())
+        && r[2..4].iter().all(u8::is_ascii_digit)
+        && r.iter().all(u8::is_ascii_alphanumeric)
+        && iban_is_valid(&reference.to_ascii_uppercase())
 }
 
 /// Creditor identifier: country code, 2 check digits, 3 alphanumeric business
@@ -516,16 +898,33 @@ impl Tally {
 struct Block {
     payment_type: bool,
     scheme_id: bool,
+    /// UltmtDbtr (pain.001) or UltmtCdtr (pain.008) in PmtInf.
+    ultimate: bool,
+    charge_bearer: bool,
     both_types: Tally,
     no_type: Tally,
     both_schemes: Tally,
     no_scheme: Tally,
+    both_ultimates: Tally,
+    both_charges: Tally,
 }
 
 impl Block {
     /// DK Anlage 3: PmtTpInf (pain.001, pain.008) and CdtrSchmeId (pain.008)
-    /// either in PmtInf or in the transaction, not on both levels.
-    fn finish(self, out: &mut Vec<Message>) {
+    /// either in PmtInf or in the transaction, not on both levels. The same
+    /// holds for the ultimate debtor (pain.001) or creditor (pain.008) and
+    /// for ChrgBr.
+    fn finish(self, out: &mut Vec<Message>, ultimate: &str) {
+        self.both_ultimates.report(
+            out,
+            &format!("{ultimate} is given both in PmtInf and in the transaction"),
+            "Give it once in PmtInf for all transactions or in each transaction, not on both levels.",
+        );
+        self.both_charges.report(
+            out,
+            "ChrgBr is given both in PmtInf and in the transaction",
+            "Give ChrgBr (SLEV) once in PmtInf (recommended) or in each transaction, not on both levels.",
+        );
         self.both_types.report(
             out,
             "PmtTpInf is given both in PmtInf and in the transaction",
@@ -562,6 +961,42 @@ struct Tx {
     debtor_address: bool,
     debtor_bic: Option<String>,
     debtor_iban: Option<String>,
+    ultimate: Option<u32>,
+    charge_bearer: Option<u32>,
+}
+
+/// A finding reported once per file, with how often it repeated.
+struct Repeated {
+    key: &'static str,
+    severity: Severity,
+    source: &'static str,
+    line: u32,
+    text: String,
+    hint: &'static str,
+    more: u32,
+}
+
+/// One <RmtInf>: the lines of its Ustrd and Strd elements.
+#[derive(Default)]
+struct Remittance {
+    unstructured: Vec<u32>,
+    structured: Vec<u32>,
+}
+
+/// One <Strd>: its line and the length of its content with the inner tags.
+struct Structured {
+    line: u32,
+    length: usize,
+}
+
+/// One <PstlAdr> of a party.
+#[derive(Default)]
+struct Address {
+    owner: String,
+    line: u32,
+    town: bool,
+    country: bool,
+    lines: u32,
 }
 
 /// One <MndtRltdInf>.
@@ -986,7 +1421,7 @@ mod tests {
     fn debtors_outside_the_eea_need_an_address() {
         let swiss_bank = DD.replace("COBADEFFXXX", "UBSWCHZH80A");
         assert_one(&swiss_bank, line_of(&swiss_bank, "<Dbtr>"), "(CH)");
-        let address = "          <PstlAdr>\n            <Ctry>CH</Ctry>\n          </PstlAdr>\n";
+        let address = "          <PstlAdr>\n            <TwnNm>Zürich</TwnNm>\n            <Ctry>CH</Ctry>\n          </PstlAdr>\n";
         let with_address = swiss_bank.replace(DEBTOR_NAME, &format!("{DEBTOR_NAME}{address}"));
         assert_eq!(check(&with_address), vec![]);
         let xml = DD.replace("COBADEFFXXX", "BARCGB22");
@@ -999,6 +1434,210 @@ mod tests {
             )
             .replace("DE02120300000000202051", "CH9300762011623852957");
         assert_one(&xml, line_of(&xml, "<Dbtr>"), "(CH)");
+    }
+
+    const CREDITOR_NAME: &str = "          <Nm>Müller &amp; Söhne</Nm>\n";
+
+    /// CT with `extra` right after the creditor's name.
+    fn creditor(extra: &str) -> String {
+        CT.replace(CREDITOR_NAME, &format!("{CREDITOR_NAME}{extra}"))
+    }
+
+    /// CT with `rmt` as the content of RmtInf.
+    fn remittance(rmt: &str) -> String {
+        CT.replace("          <Ustrd>Invoice 1/2026 (paid: 50%)</Ustrd>\n", rmt)
+    }
+
+    #[test]
+    fn names_have_at_most_70_characters() {
+        let name = |n: usize| format!("          <Nm>{}</Nm>\n", "A".repeat(n));
+        assert_eq!(check(&CT.replace(CREDITOR_NAME, &name(70))), vec![]);
+        let xml = CT.replace(CREDITOR_NAME, &name(71));
+        assert_one(&xml, line_of(&xml, "<Nm>"), "Cdtr/Nm has 71 characters");
+        // Repeated: once, with a count.
+        let xml = duplicate(&xml, "      <CdtTrfTxInf>", |t| t.replace("E2E-1", "E2E-2"));
+        assert_one(&xml, line_of(&xml, "<Nm>"), "1 more in this file");
+        // Only party names count.
+        let agent = "        <CdtrAgt>\n          <FinInstnId>\n            <Nm>".to_string()
+            + &"B".repeat(100)
+            + "</Nm>\n          </FinInstnId>\n        </CdtrAgt>\n";
+        assert_eq!(
+            check(&CT.replace("        <Cdtr>\n", &format!("{agent}        <Cdtr>\n"))),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn amounts_have_2_decimals_and_sepa_limits() {
+        let amount = |a: &str| CT.replace(">10.00<", &format!(">{a}<"));
+        for ok in ["0.01", "10", "10.5", "999999999.99"] {
+            assert_eq!(check(&amount(ok)), vec![], "{ok}");
+        }
+        let xml = amount("10.001");
+        assert_one(
+            &xml,
+            line_of(&xml, "<InstdAmt"),
+            "more than 2 decimal places",
+        );
+        for bad in ["0.00", "0", "1000000000.00"] {
+            let xml = amount(bad);
+            assert_one(
+                &xml,
+                line_of(&xml, "<InstdAmt"),
+                "outside 0.01 to 999999999.99",
+            );
+        }
+    }
+
+    #[test]
+    fn direct_debits_are_in_euro() {
+        let xml = DD.replace(
+            "        </DrctDbtTx>\n",
+            "        </DrctDbtTx>\n        <InstdAmt Ccy=\"USD\">10.00</InstdAmt>\n",
+        );
+        assert_one(&xml, line_of(&xml, "<InstdAmt"), "in USD");
+        assert_eq!(check(&xml.replace("USD", "EUR")), vec![]);
+    }
+
+    #[test]
+    fn addresses_have_town_and_country_from_iso_2019_on() {
+        let address = |inner: &str| {
+            creditor(&format!(
+                "          <PstlAdr>\n{inner}          </PstlAdr>\n"
+            ))
+        };
+        let town = "            <TwnNm>Berlin</TwnNm>\n";
+        let country = "            <Ctry>DE</Ctry>\n";
+        let line = "            <AdrLine>Hauptstr. 1</AdrLine>\n";
+        assert_eq!(
+            check(&address(&format!("{town}{country}{line}{line}"))),
+            vec![]
+        );
+        let xml = address(&format!("{line}{line}"));
+        assert_one(
+            &xml,
+            line_of(&xml, "<PstlAdr>"),
+            "Cdtr/PstlAdr has no TwnNm and Ctry",
+        );
+        let xml = address(country);
+        assert_one(&xml, line_of(&xml, "<PstlAdr>"), "has no TwnNm");
+        let xml = address(&format!("{town}{country}{line}{line}{line}"));
+        assert_one(&xml, line_of(&xml, "<PstlAdr>"), "3 AdrLine");
+        // Older versions allow unstructured addresses.
+        let old = address(&format!("{line}{line}")).replace("pain.001.001.09", "pain.001.001.03");
+        assert_eq!(check(&old), vec![]);
+    }
+
+    #[test]
+    fn remittance_is_one_ustrd_or_one_strd() {
+        let ustrd = "          <Ustrd>Invoice 1</Ustrd>\n";
+        let strd = "          <Strd>\n            <CdtrRefInf>\n              <Tp>\n                <CdOrPrtry>\n                  <Cd>SCOR</Cd>\n                </CdOrPrtry>\n              </Tp>\n              <Ref>RF18539007547034</Ref>\n            </CdtrRefInf>\n          </Strd>\n";
+        assert_eq!(check(&remittance(strd)), vec![]);
+        let xml = remittance(&format!("{ustrd}{ustrd}"));
+        assert_one(&xml, last_line_of(&xml, "<Ustrd>"), "more than one Ustrd");
+        let xml = remittance(&format!("{strd}{strd}"));
+        assert_one(&xml, last_line_of(&xml, "<Strd>"), "more than one Strd");
+        let xml = remittance(&format!("{ustrd}{strd}"));
+        assert_one(&xml, line_of(&xml, "<Strd>"), "both Ustrd and Strd");
+        // Only the creditor reference, of type SCOR.
+        let xml = remittance(&strd.replace("SCOR", "RADM"));
+        assert_one(&xml, line_of(&xml, "RADM"), "'RADM'");
+        let other = "            <RfrdDocInf>\n            </RfrdDocInf>\n";
+        let xml = remittance(&strd.replace(
+            "          </Strd>\n",
+            &format!("{other}          </Strd>\n"),
+        ));
+        assert_one(
+            &xml,
+            line_of(&xml, "<RfrdDocInf>"),
+            "Strd contains RfrdDocInf",
+        );
+        // At most 140 characters inside <Strd>, tags included.
+        // The inner tags take 81 characters with SCOR, so 59 are left for the reference.
+        let xml = remittance(&strd.replace("RF18539007547034", &"X".repeat(59)));
+        assert_eq!(check(&xml), vec![], "exactly 140");
+        let xml = remittance(&strd.replace("RF18539007547034", &"X".repeat(60)));
+        assert_one(
+            &xml,
+            line_of(&xml, "<Strd>"),
+            "141 characters long with its tags",
+        );
+    }
+
+    #[test]
+    fn rf_references_with_wrong_check_digits_are_warnings() {
+        assert!(rf_reference_is_valid("RF18539007547034"));
+        assert!(rf_reference_is_valid("rf18539007547034"));
+        assert!(!rf_reference_is_valid("RF19539007547034"));
+        assert!(!rf_reference_is_valid("RF18"));
+        let strd = "          <Strd>\n            <CdtrRefInf>\n              <Ref>RF19539007547034</Ref>\n            </CdtrRefInf>\n          </Strd>\n";
+        let xml = remittance(strd);
+        let out = check(&xml);
+        assert_eq!(out.len(), 1, "{out:?}");
+        assert_eq!(out[0].severity, Severity::Warning);
+        assert_eq!(out[0].line, Some(line_of(&xml, "<Ref>")));
+        assert!(out[0].text.contains("(ISO 11649)"), "{}", out[0].text);
+        // Other references aren't RF references.
+        assert_eq!(check(&remittance(&strd.replace("RF19", "AB19"))), vec![]);
+    }
+
+    #[test]
+    fn ultimate_parties_and_charge_bearer_are_on_one_level() {
+        let ultimate =
+            "        <UltmtDbtr>\n          <Nm>Tochter GmbH</Nm>\n        </UltmtDbtr>\n";
+        let in_block = CT.replace(
+            "      <ChrgBr>SLEV</ChrgBr>\n",
+            &format!(
+                "      <ChrgBr>SLEV</ChrgBr>\n{}",
+                ultimate.replacen("  ", "", 3)
+            ),
+        );
+        assert_eq!(check(&in_block), vec![]);
+        let xml = in_block.replace("        <Cdtr>\n", &format!("{ultimate}        <Cdtr>\n"));
+        assert_one(
+            &xml,
+            last_line_of(&xml, "<UltmtDbtr>"),
+            "UltmtDbtr is given both",
+        );
+        let xml = CT.replace(
+            "        <Cdtr>\n",
+            "        <ChrgBr>SLEV</ChrgBr>\n        <Cdtr>\n",
+        );
+        assert_one(&xml, last_line_of(&xml, "<ChrgBr>"), "ChrgBr is given both");
+        // Direct debits: UltmtCdtr.
+        let xml = DD
+            .replace(
+                "      <CdtrSchmeId>\n",
+                "      <UltmtCdtr>\n        <Nm>X</Nm>\n      </UltmtCdtr>\n      <CdtrSchmeId>\n",
+            )
+            .replace(
+                "        <DbtrAgt>\n",
+                "        <UltmtCdtr>\n          <Nm>Y</Nm>\n        </UltmtCdtr>\n        <DbtrAgt>\n",
+            );
+        assert_one(
+            &xml,
+            last_line_of(&xml, "<UltmtCdtr>"),
+            "UltmtCdtr is given both",
+        );
+    }
+
+    #[test]
+    fn direct_debits_charge_slev_only() {
+        let with = |c: &str| {
+            DD.replace(
+                "      <CdtrSchmeId>\n",
+                &format!("      <ChrgBr>{c}</ChrgBr>\n      <CdtrSchmeId>\n"),
+            )
+        };
+        assert_eq!(check(&with("SLEV")), vec![]);
+        let xml = with("SHAR");
+        assert_one(&xml, line_of(&xml, "<ChrgBr>"), "'SHAR'");
+    }
+
+    #[test]
+    fn creditor_identifier_scheme_is_sepa() {
+        let xml = DD.replace("<Prtry>SEPA</Prtry>", "<Prtry>CORE</Prtry>");
+        assert_one(&xml, line_of(&xml, "<Prtry>CORE"), "'CORE' must be SEPA");
     }
 
     // DK rule for mandate amendments (AmdmntInfDtls).
