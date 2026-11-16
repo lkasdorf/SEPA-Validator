@@ -12,7 +12,13 @@ use quick_xml::reader::Reader;
 use crate::model::{Message, Severity};
 
 /// Run all checks on a (formatted) document. `today` is `YYYY-MM-DD`.
+#[cfg(test)]
 pub fn check(xml: &str, today: &str) -> Vec<Message> {
+    check_without(xml, today, &[])
+}
+
+/// Like `check`, but without the DK rules in the `disabled` groups.
+pub fn check_without(xml: &str, today: &str, disabled: &[crate::rules::Group]) -> Vec<Message> {
     let mut c = Checker {
         today,
         ..Checker::default()
@@ -49,7 +55,7 @@ pub fn check(xml: &str, today: &str) -> Vec<Message> {
     }
     let mut out = c.finish();
     out.extend(crate::statements::check(xml));
-    out.extend(crate::rules::check(xml));
+    out.extend(crate::rules::check_without(xml, disabled));
     out.sort_by_key(|m| m.line);
     out
 }

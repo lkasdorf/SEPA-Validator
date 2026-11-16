@@ -201,6 +201,8 @@ fn text_signal(stack: &[Vec<u8>], value: &str) -> Signal {
 pub struct Validator {
     schema_dir: PathBuf,
     cache: HashMap<&'static str, SchemaValidationContext>,
+    /// DK rule groups switched off in the settings.
+    disabled_rules: Vec<crate::rules::Group>,
 }
 
 impl Validator {
@@ -209,7 +211,14 @@ impl Validator {
         Self {
             schema_dir,
             cache: HashMap::new(),
+            disabled_rules: Vec::new(),
         }
+    }
+
+    /// Skip the DK rules in these groups.
+    pub fn without_rules(mut self, disabled: Vec<crate::rules::Group>) -> Self {
+        self.disabled_rules = disabled;
+        self
     }
 
     pub fn validate_file(&mut self, path: &Path) -> ValidationResult {
@@ -402,9 +411,10 @@ impl Validator {
             }
         }
         // Checks the schema can't express (control sums, IBAN check digits, ...).
-        messages.extend(crate::plausibility::check(
+        messages.extend(crate::plausibility::check_without(
             &formatted,
             &crate::plausibility::today(),
+            &self.disabled_rules,
         ));
 
         ValidationResult::from_messages(file, path_str, ns, schema_name.to_string(), messages)

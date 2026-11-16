@@ -7,6 +7,7 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 
 use crate::model::{Message, Severity, Status, ValidationResult};
+use crate::rules::Group;
 use crate::scanner;
 use crate::statement_gen::{Generated, StatementPreview};
 use crate::validator::Validator;
@@ -67,6 +68,7 @@ pub fn start_validation(
     app: AppHandle,
     runs: State<'_, RunState>,
     paths: Vec<String>,
+    disabled_rules: Option<Vec<Group>>,
     on_event: Channel<ValidationEvent>,
 ) {
     let runs = runs.inner().clone();
@@ -77,7 +79,7 @@ pub fn start_validation(
     // The folder walk runs there too, so dropping a big folder can't block the UI thread.
     std::thread::spawn(move || {
         let files: Vec<PathBuf> = scanner::expand_paths(paths.iter().map(PathBuf::from));
-        let mut validator = Validator::new(dir);
+        let mut validator = Validator::new(dir).without_rules(disabled_rules.unwrap_or_default());
         run_batch(
             &files,
             |f| validator.validate_file(f),
@@ -203,17 +205,28 @@ pub async fn validate_edited(
     app: AppHandle,
     path: String,
     text: String,
+    disabled_rules: Option<Vec<Group>>,
 ) -> Result<EditedValidation, String> {
     let dir = schema_dir(&app)?;
-    tauri::async_runtime::spawn_blocking(move || validate_text(dir, Path::new(&path), &text))
-        .await
-        .map_err(|e| format!("Validation failed: {e}"))
+    let disabled = disabled_rules.unwrap_or_default();
+    tauri::async_runtime::spawn_blocking(move || {
+        validate_text(dir, Path::new(&path), &text, disabled)
+    })
+    .await
+    .map_err(|e| format!("Validation failed: {e}"))
 }
 
-fn validate_text(schema_dir: PathBuf, path: &Path, text: &str) -> EditedValidation {
+fn validate_text(
+    schema_dir: PathBuf,
+    path: &Path,
+    text: &str,
+    disabled: Vec<Group>,
+) -> EditedValidation {
     EditedValidation {
         formatted: crate::formatting::format_bytes(text.as_bytes()).ok(),
-        result: Validator::new(schema_dir).validate_bytes(path, text.as_bytes()),
+        result: Validator::new(schema_dir)
+            .without_rules(disabled)
+            .validate_bytes(path, text.as_bytes()),
     }
 }
 
@@ -224,11 +237,15 @@ pub async fn save_edited(
     app: AppHandle,
     source: String,
     text: String,
+    disabled_rules: Option<Vec<Group>>,
 ) -> Result<ValidationResult, String> {
     let dir = schema_dir(&app)?;
+    let disabled = disabled_rules.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
         let target = write_edited_copy(Path::new(&source), &text)?;
-        Ok(Validator::new(dir).validate_file(&target))
+        Ok(Validator::new(dir)
+            .without_rules(disabled)
+            .validate_file(&target))
     })
     .await
     .map_err(|e| format!("Saving failed: {e}"))?
@@ -1249,7 +1266,7 @@ mod tests {
         let dir = fresh_dir("sepa_validate_edited");
         let path = dir.join("missing_on_disk.xml");
         let text = "<?xml version=\"1.0\"?><a xmlns=\"urn:example:unknown\"><b>1</b></a>";
-        let v = validate_text(dir.clone(), &path, text);
+        let v = validate_text(dir.clone(), &path, text, Vec::new());
         assert_eq!(v.result.path, path.display().to_string());
         assert_eq!(v.result.status, Status::NoSchema);
         assert_eq!(
@@ -1271,6 +1288,7 @@ mod tests {
             dir.clone(),
             &dir.join("x.xml"),
             "<a xmlns=\"urn:x\"><b></a>",
+            Vec::new(),
         );
         assert!(v.formatted.is_none());
         assert_ne!(v.result.status, Status::Ok);

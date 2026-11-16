@@ -68,6 +68,7 @@ A native Windows application that validates one or many files at once and lets y
   - From pain.001.001.09 / pain.008.001.08 on: postal addresses with town and country and at most 2 address lines.
   - Remittance information: one `Ustrd` or one `Strd` (creditor reference `SCOR` only, at most 140 characters). An RF reference with wrong check digits is a warning.
   - `UltmtDbtr`/`UltmtCdtr` and `ChrgBr` on one level only; `ChrgBr` `SLEV` in direct debits; creditor identifier scheme `SEPA`.
+- **Settings.** Menu → **Settings…** switches groups of DK usage rules off (all are on by default), e.g. the address rules if your bank still accepts unstructured addresses.
 - **Readable messages with hints.** For example: "Use a dot as the decimal separator, e.g. 1250.00." or "Required element <InitgPty> is missing in <GrpHdr>."
 - **Live log, click to the error.** Results stream in as files are validated. Click any error to jump to its line in a syntax-highlighted, pretty-printed XML viewer. Search with `Ctrl+F`, fold blocks, and **Cancel** a long run.
 - **Overview, Remittance and Transactions tabs.**

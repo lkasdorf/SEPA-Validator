@@ -13,6 +13,8 @@ use std::collections::HashSet;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::reader::Reader;
 
+use serde::{Deserialize, Serialize};
+
 use crate::model::{Message, Severity};
 use crate::plausibility::{iban_is_valid, LineCounter};
 use crate::schema::Variant;
@@ -56,8 +58,36 @@ const PARTIES: &[&str] = &[
     "OrgnlCdtrSchmeId",
 ];
 
-/// Check a (formatted) document against the DK usage rules.
+/// Groups of DK rules that can be switched off in the app's settings.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Group {
+    /// Character set (also in IDs) and namespace prefixes.
+    Characters,
+    /// Slashes at the start or end of references and IDs, or "//".
+    References,
+    /// Service level, local instrument, CORE/B2B and elements on one level only.
+    PaymentType,
+    /// Creditor identifier and mandate amendments.
+    Creditor,
+    /// Name lengths, amounts and the direct debit currency.
+    AmountsNames,
+    /// Postal addresses and remittance information.
+    AddressesRemittance,
+}
+
+/// A finding with the rule group it belongs to.
+type Findings = Vec<(Group, Message)>;
+
+/// Check a (formatted) document against all DK usage rules.
+#[cfg(test)]
 pub fn check(xml: &str) -> Vec<Message> {
+    check_without(xml, &[])
+}
+
+/// Check a (formatted) document against the DK usage rules, except those in
+/// the `disabled` groups.
+pub fn check_without(xml: &str, disabled: &[Group]) -> Vec<Message> {
     let Some((kind, iso2019)) = Kind::of(xml) else {
         return Vec::new();
     };
@@ -92,7 +122,12 @@ pub fn check(xml: &str) -> Vec<Message> {
             Ok(_) => {}
         }
     }
-    rules.finish()
+    rules
+        .finish()
+        .into_iter()
+        .filter(|(group, _)| !disabled.contains(group))
+        .map(|(_, message)| message)
+        .collect()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -141,21 +176,24 @@ fn ends_with(stack: &[String], tail: &[&str]) -> bool {
             .all(|(a, b)| a == b)
 }
 
-fn error(out: &mut Vec<Message>, line: u32, text: String, hint: &str) {
-    out.push(Message {
-        severity: Severity::Error,
-        text,
-        line: Some(line),
-        column: None,
-        hint: Some(hint.into()),
-    });
+fn error(out: &mut Findings, group: Group, line: u32, text: String, hint: &str) {
+    out.push((
+        group,
+        Message {
+            severity: Severity::Error,
+            text,
+            line: Some(line),
+            column: None,
+            hint: Some(hint.into()),
+        },
+    ));
 }
 
 struct Rules {
     kind: Kind,
     /// ISO 2019 versions: postal addresses need a town and country.
     iso2019: bool,
-    out: Vec<Message>,
+    out: Findings,
     /// Findings that may repeat throughout a file, reported once each.
     repeated: Vec<Repeated>,
     prefix_reported: bool,
@@ -195,19 +233,20 @@ impl Rules {
     }
 
     /// The findings, with each repeated one once and a count of the others.
-    fn finish(mut self) -> Vec<Message> {
+    fn finish(mut self) -> Findings {
         for r in self.repeated {
             let more = match r.more {
                 0 => String::new(),
                 n => format!("; {n} more in this file"),
             };
-            self.out.push(Message {
+            let message = Message {
                 severity: r.severity,
                 text: format!("{} ({}{more}).", r.text, r.source),
                 line: Some(r.line),
                 column: None,
                 hint: Some(r.hint.into()),
-            });
+            };
+            self.out.push((r.group, message));
         }
         self.out
     }
@@ -216,18 +255,19 @@ impl Rules {
     fn repeat(
         &mut self,
         key: &'static str,
+        group: Group,
         line: u32,
         text: impl FnOnce() -> String,
         hint: &'static str,
     ) {
-        self.repeat_as(key, Severity::Error, "DK rules", line, text, hint);
+        self.repeat_as(key, group, (Severity::Error, "DK rules"), line, text, hint);
     }
 
     fn repeat_as(
         &mut self,
         key: &'static str,
-        severity: Severity,
-        source: &'static str,
+        group: Group,
+        (severity, source): (Severity, &'static str),
         line: u32,
         text: impl FnOnce() -> String,
         hint: &'static str,
@@ -238,6 +278,7 @@ impl Rules {
         }
         self.repeated.push(Repeated {
             key,
+            group,
             severity,
             source,
             line,
@@ -254,6 +295,7 @@ impl Rules {
             self.prefix_reported = true;
             error(
                 &mut self.out,
+                Group::Characters,
                 line,
                 format!(
                     "<{}> has a namespace prefix; DK files must not use prefixes (DK rules).",
@@ -273,6 +315,7 @@ impl Rules {
             if let Some(ccy) = ccy.filter(|c| c != "EUR") {
                 self.repeat(
                     "currency",
+                    Group::AmountsNames,
                     line,
                     || format!("InstdAmt is in {ccy}; SEPA direct debits are in EUR"),
                     "Collect SEPA direct debits in EUR only.",
@@ -340,6 +383,7 @@ impl Rules {
             if parent == Some("Strd") && name != "CdtrRefInf" {
                 self.repeat(
                     "structured-branch",
+                    Group::AddressesRemittance,
                     line,
                     || format!("Strd contains {name}; SEPA allows only CdtrRefInf there"),
                     "Structured remittance information may only hold the creditor reference \
@@ -404,6 +448,7 @@ impl Rules {
                     if s.length > 140 {
                         self.repeat(
                             "structured-length",
+                            Group::AddressesRemittance,
                             s.line,
                             || {
                                 format!(
@@ -431,6 +476,7 @@ impl Rules {
         if let Some(&line) = r.unstructured.get(1) {
             self.repeat(
                 "unstructured-twice",
+                Group::AddressesRemittance,
                 line,
                 || "RmtInf has more than one Ustrd".into(),
                 "SEPA allows one Ustrd of up to 140 characters per transaction.",
@@ -439,6 +485,7 @@ impl Rules {
         if let Some(&line) = r.structured.get(1) {
             self.repeat(
                 "structured-twice",
+                Group::AddressesRemittance,
                 line,
                 || "RmtInf has more than one Strd".into(),
                 "SEPA allows one structured creditor reference per transaction.",
@@ -447,6 +494,7 @@ impl Rules {
         if let (Some(_), Some(&line)) = (r.unstructured.first(), r.structured.first()) {
             self.repeat(
                 "unstructured-and-structured",
+                Group::AddressesRemittance,
                 line,
                 || "RmtInf has both Ustrd and Strd; SEPA allows one or the other".into(),
                 "Give either the remittance text (Ustrd) or a structured creditor reference \
@@ -468,6 +516,7 @@ impl Rules {
             let owner = &a.owner;
             self.repeat(
                 "address-town-country",
+                Group::AddressesRemittance,
                 a.line,
                 || format!("{owner}/PstlAdr has no {missing}"),
                 "From pain.001.001.09 and pain.008.001.08 on (GBIC_5, since 5 Oct 2025) a postal \
@@ -479,6 +528,7 @@ impl Rules {
             let (owner, lines) = (&a.owner, a.lines);
             self.repeat(
                 "address-lines",
+                Group::AddressesRemittance,
                 a.line,
                 || format!("{owner}/PstlAdr has {lines} AdrLine; DK allows at most 2"),
                 "Put street, building number and postcode in their own elements \
@@ -520,6 +570,7 @@ impl Rules {
         {
             error(
                 &mut self.out,
+                Group::PaymentType,
                 line,
                 format!(
                     "SvcLvl '{trimmed}' is not allowed; a SEPA direct debit has SEPA (DK rules)."
@@ -554,6 +605,7 @@ impl Rules {
                 if length > 70 {
                     self.repeat(
                         "name-length",
+                        Group::AmountsNames,
                         line,
                         || format!("{party}/Nm has {length} characters; DK allows at most 70"),
                         "Shorten the name to 70 characters. The ISO schema allows 140, but the \
@@ -564,12 +616,14 @@ impl Rules {
             (_, "InstdAmt") => match amount_problem(value) {
                 Some(Amount::Decimals) => self.repeat(
                     "amount-decimals",
+                    Group::AmountsNames,
                     line,
                     || format!("InstdAmt {value} has more than 2 decimal places"),
                     "SEPA amounts have at most 2 decimal places, e.g. 10.50.",
                 ),
                 Some(Amount::Range) => self.repeat(
                     "amount-range",
+                    Group::AmountsNames,
                     line,
                     || format!("InstdAmt {value} is outside 0.01 to 999999999.99"),
                     "A SEPA amount is at least 0.01 and at most 999,999,999.99 EUR.",
@@ -582,6 +636,7 @@ impl Rules {
             {
                 self.repeat(
                     "reference-type",
+                    Group::AddressesRemittance,
                     line,
                     || {
                         format!(
@@ -592,14 +647,13 @@ impl Rules {
                 );
             }
             (Some("CdtrRefInf"), "Ref")
-                if value.len() >= 2
-                    && value[..2].eq_ignore_ascii_case("RF")
+                if value.get(..2).is_some_and(|p| p.eq_ignore_ascii_case("RF"))
                     && !rf_reference_is_valid(value) =>
             {
                 self.repeat_as(
                     "rf-reference",
-                    Severity::Warning,
-                    "ISO 11649",
+                    Group::AddressesRemittance,
+                    (Severity::Warning, "ISO 11649"),
                     line,
                     || format!("Creditor reference '{value}' has wrong RF check digits or format"),
                     "An RF creditor reference is RF, 2 check digits (MOD 97-10) and up to 21 \
@@ -609,6 +663,7 @@ impl Rules {
             (Some("SchmeNm"), "Prtry") if is_creditor_scheme_name(stack) && value != "SEPA" => {
                 self.repeat(
                     "scheme-name",
+                    Group::Creditor,
                     line,
                     || format!("Creditor identifier scheme '{value}' must be SEPA"),
                     "Set SchmeNm/Prtry of the creditor identifier to SEPA.",
@@ -617,6 +672,7 @@ impl Rules {
             (_, "ChrgBr") if self.kind == Kind::DirectDebit && value != "SLEV" => {
                 self.repeat(
                     "charge-bearer",
+                    Group::PaymentType,
                     line,
                     || {
                         format!(
@@ -661,7 +717,7 @@ impl Rules {
                 CHARS_HINT,
             )
         };
-        error(&mut self.out, line, text, hint);
+        error(&mut self.out, Group::Characters, line, text, hint);
     }
 
     /// EPC230-15: references and IDs must not start or end with "/" or contain "//".
@@ -669,6 +725,7 @@ impl Rules {
         if value.starts_with('/') || value.ends_with('/') || value.contains("//") {
             error(
                 &mut self.out,
+                Group::References,
                 line,
                 format!("{element} '{value}' must not start or end with '/' or contain '//' (DK rules)."),
                 "This EPC rule (EPC230-15) applies to all references and IDs. Banks may reject the file.",
@@ -683,6 +740,7 @@ impl Rules {
             if !(element == "Cd" && value == "INST") {
                 error(
                     &mut self.out,
+                    Group::PaymentType,
                     line,
                     format!(
                         "LclInstrm {element} '{value}' is not allowed in a SEPA credit transfer; \
@@ -696,6 +754,7 @@ impl Rules {
         if element != "Cd" || !matches!(value, "CORE" | "B2B") {
             error(
                 &mut self.out,
+                Group::PaymentType,
                 line,
                 format!("LclInstrm {element} '{value}' is not allowed; a SEPA direct debit is Cd CORE or B2B (DK rules)."),
                 "Use CORE for SEPA core direct debits and B2B for business-to-business ones.",
@@ -712,6 +771,7 @@ impl Rules {
                 self.mixing_reported = true;
                 error(
                     &mut self.out,
+                    Group::PaymentType,
                     line,
                     text,
                     "Put CORE and B2B direct debits in separate files.",
@@ -728,6 +788,7 @@ impl Rules {
         }
         error(
             &mut self.out,
+            Group::Creditor,
             line,
             format!("Creditor identifier '{ci}' has a wrong format or check digits (DK rules)."),
             "A CI is the country code, 2 check digits (MOD 97-10 over the national part and the \
@@ -778,6 +839,7 @@ impl Rules {
         }
         error(
             &mut self.out,
+            Group::AddressesRemittance,
             tx.debtor.unwrap_or(tx.line),
             format!("Dbtr has no PstlAdr, but the debtor's bank is outside the EU/EEA ({country}) (DK rules)."),
             "Direct debits from accounts at banks outside the EU/EEA (e.g. CH, GB) need the \
@@ -880,7 +942,7 @@ impl Tally {
         }
     }
 
-    fn report(self, out: &mut Vec<Message>, text: &str, hint: &str) {
+    fn report(self, out: &mut Findings, text: &str, hint: &str) {
         let Some(line) = self.first else {
             return;
         };
@@ -889,7 +951,7 @@ impl Tally {
             1 => format!("{text} (DK rules; 1 more transaction in this payment block too)."),
             n => format!("{text} (DK rules; {n} more transactions in this payment block too)."),
         };
-        error(out, line, text, hint);
+        error(out, Group::PaymentType, line, text, hint);
     }
 }
 
@@ -914,7 +976,7 @@ impl Block {
     /// either in PmtInf or in the transaction, not on both levels. The same
     /// holds for the ultimate debtor (pain.001) or creditor (pain.008) and
     /// for ChrgBr.
-    fn finish(self, out: &mut Vec<Message>, ultimate: &str) {
+    fn finish(self, out: &mut Findings, ultimate: &str) {
         self.both_ultimates.report(
             out,
             &format!("{ultimate} is given both in PmtInf and in the transaction"),
@@ -968,6 +1030,7 @@ struct Tx {
 /// A finding reported once per file, with how often it repeated.
 struct Repeated {
     key: &'static str,
+    group: Group,
     severity: Severity,
     source: &'static str,
     line: u32,
@@ -1009,10 +1072,11 @@ struct Mandate {
 
 impl Mandate {
     /// DK Anlage 3: AmdmntInfDtls is required if AmdmntInd is true.
-    fn finish(self, out: &mut Vec<Message>) {
+    fn finish(self, out: &mut Findings) {
         if let (Some(line), false) = (self.amendment, self.details) {
             error(
                 out,
+                Group::Creditor,
                 line,
                 "AmdmntInd is true, but AmdmntInfDtls is missing (DK rules).".into(),
                 "Say in AmdmntInfDtls what changed (e.g. OrgnlMndtId, or SMNDA in OrgnlDbtrAcct \
@@ -1051,7 +1115,7 @@ impl Amendment {
     /// DK Anlage 3 V3.9, AmendmentInformationDetails: OrgnlDbtrAgt may only be
     /// given if OrgnlDbtrAcct isn't SMNDA, and an old IBAN in OrgnlDbtrAcct is
     /// only allowed when the debtor's bank stayed the same.
-    fn finish(self, out: &mut Vec<Message>) {
+    fn finish(self, out: &mut Findings) {
         let (true, Some(line)) = (self.debtor_account, self.debtor_agent) else {
             return;
         };
@@ -1062,6 +1126,7 @@ impl Amendment {
         };
         error(
             out,
+            Group::Creditor,
             line,
             text.into(),
             "For a new debtor account, put only SMNDA in OrgnlDbtrAcct and leave out OrgnlDbtrAgt. \
@@ -1579,6 +1644,14 @@ mod tests {
         assert!(out[0].text.contains("(ISO 11649)"), "{}", out[0].text);
         // Other references aren't RF references.
         assert_eq!(check(&remittance(&strd.replace("RF19", "AB19"))), vec![]);
+        // Non-ASCII references don't panic (byte 2 inside a character).
+        for r in ["Müller-Rechnung", "Aß123", "ü"] {
+            let xml = remittance(&strd.replace("RF19539007547034", r));
+            assert!(
+                check(&xml).iter().all(|m| !m.text.contains("RF check")),
+                "{r}"
+            );
+        }
     }
 
     #[test]
@@ -1638,6 +1711,38 @@ mod tests {
     fn creditor_identifier_scheme_is_sepa() {
         let xml = DD.replace("<Prtry>SEPA</Prtry>", "<Prtry>CORE</Prtry>");
         assert_one(&xml, line_of(&xml, "<Prtry>CORE"), "'CORE' must be SEPA");
+    }
+
+    #[test]
+    fn disabled_groups_are_skipped() {
+        let xml = DD
+            .replace("<Cd>SEPA</Cd>", "<Cd>NURG</Cd>")
+            .replace("E2E-1", "E2E_1/");
+        assert_eq!(errors(&xml).len(), 3);
+        let out = check_without(&xml, &[Group::PaymentType, Group::References]);
+        assert_eq!(out.len(), 1, "{out:?}");
+        assert!(
+            out[0].text.contains("not allowed in IDs"),
+            "{}",
+            out[0].text
+        );
+        let all = [
+            Group::Characters,
+            Group::References,
+            Group::PaymentType,
+            Group::Creditor,
+            Group::AmountsNames,
+            Group::AddressesRemittance,
+        ];
+        assert_eq!(check_without(&xml, &all), vec![]);
+    }
+
+    #[test]
+    fn groups_have_stable_names_for_the_settings() {
+        let names = r#"["characters","references","payment-type","creditor","amounts-names","addresses-remittance"]"#;
+        let groups: Vec<Group> = serde_json::from_str(names).unwrap();
+        assert_eq!(groups.len(), 6);
+        assert_eq!(serde_json::to_string(&groups).unwrap(), names);
     }
 
     // DK rule for mandate amendments (AmdmntInfDtls).
