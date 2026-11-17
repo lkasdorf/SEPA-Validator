@@ -1,14 +1,16 @@
 //! Usage rules of the German banking industry (DK, "DFÜ-Abkommen Anlage 3"
 //! V3.9, column "EPC-/DK-Regeln") that the XSD can't express. A file that
 //! breaks them is schema-valid, but banks may reject it, so they are errors.
-//! Only wrong RF check digits in a creditor reference are a warning: banks
-//! needn't check them.
+//! Three findings are warnings: wrong RF check digits in a creditor reference
+//! (banks needn't check them), a scheme code that isn't in the ISO code list
+//! this app knows (the list grows), and a MsgId that two files of a run share.
 //!
 //! The rules cover SEPA credit transfers and direct debits (pain.001,
 //! pain.008). Swiss files and the DK urgent/foreign credit transfer subsets
 //! have rules of their own and are skipped.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::reader::Reader;
@@ -58,22 +60,38 @@ const PARTIES: &[&str] = &[
     "OrgnlCdtrSchmeId",
 ];
 
+/// Scheme codes for an organisation's `Othr` identification (ISO 20022
+/// external code set ExternalOrganisationIdentification1Code).
+const ORGANISATION_CODES: &[&str] = &[
+    "BANK", "BDID", "BOID", "CBID", "CHID", "CINC", "COID", "CUST", "DUNS", "EMPL", "GS1G", "SREN",
+    "SRET", "TXID",
+];
+
+/// Scheme codes for a person's `Othr` identification (ISO 20022 external code
+/// set ExternalPersonIdentification1Code).
+const PERSON_CODES: &[&str] = &[
+    "ARNU", "CCPT", "CUST", "DRLC", "EMPL", "NIDN", "POID", "SOSE", "TELE", "TXID",
+];
+
 /// Groups of DK rules that can be switched off in the app's settings.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Group {
     /// Character set (also in IDs) and namespace prefixes.
     Characters,
-    /// Slashes at the start or end of references and IDs, or "//".
+    /// Slashes at the start or end of references and IDs, or "//", and a MsgId
+    /// shared by two files of a run.
     References,
     /// Service level, local instrument, CORE/B2B and elements on one level only.
     PaymentType,
     /// Creditor identifier and mandate amendments.
     Creditor,
-    /// Name lengths, amounts and the direct debit currency.
+    /// Name lengths, amounts, control sums and the direct debit currency.
     AmountsNames,
     /// Postal addresses and remittance information.
     AddressesRemittance,
+    /// Accounts as IBAN, banks by BIC or NOTPROVIDED, and party identifications.
+    AccountsParties,
 }
 
 /// A finding with the rule group it belongs to.
@@ -128,6 +146,109 @@ pub fn check_without(xml: &str, disabled: &[Group]) -> Vec<Message> {
         .filter(|(group, _)| !disabled.contains(group))
         .map(|(_, message)| message)
         .collect()
+}
+
+/// The MsgIds of the files validated in one run. DK Anlage 3: the MsgId
+/// "dient zur Erkennung von doppelt eingereichten Dateien", so every message
+/// needs a new one.
+#[derive(Default)]
+pub struct MessageIds(HashMap<String, FirstUse>);
+
+/// The first file of a run that used a MsgId.
+struct FirstUse {
+    file: String,
+    path: String,
+    /// Hash of the formatted text, to tell a copy from another file.
+    content: u64,
+}
+
+impl MessageIds {
+    /// A warning if another file of this run already used this file's MsgId.
+    /// Only for the files the DK rules apply to, and not if `disabled` holds
+    /// the references group.
+    pub fn check(
+        &mut self,
+        xml: &str,
+        file: &str,
+        path: &str,
+        disabled: &[Group],
+    ) -> Option<Message> {
+        if disabled.contains(&Group::References) {
+            return None;
+        }
+        Kind::of(xml)?;
+        let (id, line) = message_id(xml)?;
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        xml.hash(&mut hasher);
+        let content = hasher.finish();
+        let Some(first) = self.0.get(&id) else {
+            let first = FirstUse {
+                file: file.to_string(),
+                path: path.to_string(),
+                content,
+            };
+            self.0.insert(id, first);
+            return None;
+        };
+        if first.path == path {
+            return None;
+        }
+        let (text, hint) = if first.content == content {
+            (
+                format!(
+                    "MsgId '{id}' is also used by {}, which has the same content; this file is \
+                     a copy (DK rules).",
+                    first.file
+                ),
+                "Banks use the MsgId to detect files that were submitted twice. Submit only one \
+                 of the two files.",
+            )
+        } else {
+            (
+                format!(
+                    "MsgId '{id}' is also used by {}, which has other content; every file needs \
+                     a MsgId of its own (DK rules).",
+                    first.file
+                ),
+                "Banks use the MsgId to detect files that were submitted twice and may reject \
+                 the second one. Give this file a new MsgId, or submit only the right one if it \
+                 replaces the other.",
+            )
+        };
+        Some(Message {
+            severity: Severity::Warning,
+            text,
+            line: Some(line),
+            column: None,
+            hint: Some(hint.into()),
+        })
+    }
+}
+
+/// GrpHdr/MsgId of a (formatted) document, with its line.
+fn message_id(xml: &str) -> Option<(String, u32)> {
+    let mut reader = Reader::from_str(xml);
+    let mut lines = LineCounter::new(xml);
+    let mut stack: Vec<String> = Vec::new();
+    loop {
+        let line = lines.at(reader.buffer_position() as usize);
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                stack.push(String::from_utf8_lossy(e.local_name().as_ref()).into_owned())
+            }
+            Ok(Event::End(_)) => {
+                if stack.pop().as_deref() == Some("GrpHdr") {
+                    return None;
+                }
+            }
+            Ok(Event::Text(t)) if ends_with(&stack, &["GrpHdr", "MsgId"]) => {
+                let id = t.unescape().ok()?.trim().to_string();
+                return (!id.is_empty()).then_some((id, line));
+            }
+            Ok(Event::Eof) | Err(_) => return None,
+            Ok(_) => {}
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -209,6 +330,7 @@ struct Rules {
     remittance: Option<Remittance>,
     structured: Option<Structured>,
     address: Option<Address>,
+    party_id: Option<PartyId>,
 }
 
 impl Rules {
@@ -229,6 +351,7 @@ impl Rules {
             remittance: None,
             structured: None,
             address: None,
+            party_id: None,
         }
     }
 
@@ -365,6 +488,56 @@ impl Rules {
                     }
                 }
             }
+            // DK Anlage 3: "Es muss eine IBAN angegeben werden."
+            (Some("Id"), "Othr")
+                if ends_with(stack, &["DbtrAcct", "Id"])
+                    || ends_with(stack, &["CdtrAcct", "Id"]) =>
+            {
+                let account = stack[stack.len() - 2].clone();
+                self.repeat(
+                    "account-not-iban",
+                    Group::AccountsParties,
+                    line,
+                    || format!("{account} is given as Othr; SEPA accounts must be an IBAN"),
+                    "Give the account as <Id><IBAN>…</IBAN></Id>. Account numbers in Othr are \
+                     not allowed in SEPA payments.",
+                );
+            }
+            // DK Anlage 3: the creditor's bank in a credit transfer is a BIC only.
+            (Some("FinInstnId"), "Othr")
+                if self.kind == Kind::CreditTransfer
+                    && ends_with(stack, &["CdtrAgt", "FinInstnId"]) =>
+            {
+                self.repeat(
+                    "creditor-agent-other",
+                    Group::AccountsParties,
+                    line,
+                    || {
+                        "CdtrAgt is given as Othr; a SEPA credit transfer allows only the BIC there"
+                            .into()
+                    },
+                    "Give the creditor's bank as a BIC or leave CdtrAgt out; the IBAN is enough.",
+                );
+            }
+            (Some("Id"), "OrgId" | "PrvtId") if stack.len() >= 2 => {
+                self.party_id = Some(PartyId {
+                    owner: stack[stack.len() - 2].clone(),
+                    private: name == "PrvtId",
+                    line,
+                    ..PartyId::default()
+                })
+            }
+            (Some("OrgId" | "PrvtId"), _) => {
+                if let Some(p) = self.party_id.as_mut() {
+                    match name {
+                        "AnyBIC" | "BICOrBEI" | "LEI" | "DtAndPlcOfBirth" => {
+                            p.kinds.push(name.to_string())
+                        }
+                        "Othr" => p.others += 1,
+                        _ => {}
+                    }
+                }
+            }
             (Some(owner), "PstlAdr") if self.iso2019 && PARTIES.contains(&owner) => {
                 self.address = Some(Address {
                     owner: owner.to_string(),
@@ -467,8 +640,60 @@ impl Rules {
                     self.address_finish(a);
                 }
             }
+            Some("OrgId" | "PrvtId") => {
+                if let Some(p) = self.party_id.take() {
+                    self.party_id_finish(p);
+                }
+            }
             _ => {}
         }
+    }
+
+    /// DK Anlage 3, party identification: an organisation has either AnyBIC,
+    /// LEI or one Othr (the debtor and ultimate debtor may combine them), a
+    /// person either DtAndPlcOfBirth or one Othr.
+    fn party_id_finish(&mut self, p: PartyId) {
+        let id = if p.private { "PrvtId" } else { "OrgId" };
+        let owner = &p.owner;
+        if p.others > 1 {
+            let others = p.others;
+            self.repeat(
+                "party-id-others",
+                Group::AccountsParties,
+                p.line,
+                || format!("{owner}/Id/{id} has {others} Othr; DK allows at most 1"),
+                "Keep one Othr identification per party.",
+            );
+        }
+        let may_combine = !p.private && matches!(owner.as_str(), "Dbtr" | "UltmtDbtr");
+        if may_combine || p.kinds.len() + usize::from(p.others > 0) < 2 {
+            return;
+        }
+        let mut found = p.kinds.clone();
+        if p.others > 0 {
+            found.push("Othr".into());
+        }
+        let found = found.join(" and ");
+        let (key, hint) = if p.private {
+            (
+                "private-id-choice",
+                "Identify a person either by date and place of birth (DtAndPlcOfBirth) or by \
+                 one Othr identification, not both.",
+            )
+        } else {
+            (
+                "organisation-id-choice",
+                "Identify an organisation by its BIC, its LEI or one Othr identification. Only \
+                 the debtor and ultimate debtor may combine them.",
+            )
+        };
+        self.repeat(
+            key,
+            Group::AccountsParties,
+            p.line,
+            || format!("{owner}/Id/{id} has {found}; DK allows only one of them"),
+            hint,
+        );
     }
 
     /// DK Anlage 3, 2.2.1.7: one Ustrd or one Strd, not both.
@@ -660,6 +885,48 @@ impl Rules {
                      letters or digits. With wrong check digits the payee may not match the payment.",
                 );
             }
+            (Some("GrpHdr" | "PmtInf"), "CtrlSum")
+                if matches!(amount_problem(value), Some(Amount::Decimals)) =>
+            {
+                self.repeat(
+                    "control-sum-decimals",
+                    Group::AmountsNames,
+                    line,
+                    || format!("CtrlSum {value} has more than 2 decimal places"),
+                    "SEPA control sums have at most 2 decimal places, like the amounts.",
+                );
+            }
+            // DK Anlage 3: "Falls das BICFI-Feld nicht genutzt wird, ist hier die
+            // Konstante NOTPROVIDED anzugeben." (CdtrAgt in a credit transfer
+            // takes no Othr at all, see `start`.)
+            (Some("Othr"), "Id") if value != "NOTPROVIDED" && self.is_agent_other(stack) => {
+                let agent = stack[stack.len() - 4].clone();
+                self.repeat(
+                    "agent-not-provided",
+                    Group::AccountsParties,
+                    line,
+                    || {
+                        format!(
+                            "{agent} is identified by Othr/Id '{value}'; without a BIC only \
+                             NOTPROVIDED is allowed"
+                        )
+                    },
+                    "Give the bank's BIC, or write NOTPROVIDED in FinInstnId/Othr/Id. Bank codes \
+                     and other IDs are not allowed there.",
+                );
+            }
+            (Some("SchmeNm"), "Cd")
+                if ends_with(stack, &["OrgId", "Othr", "SchmeNm", "Cd"])
+                    && !ORGANISATION_CODES.contains(&value) =>
+            {
+                self.scheme_code(value, false, line);
+            }
+            (Some("SchmeNm"), "Cd")
+                if ends_with(stack, &["PrvtId", "Othr", "SchmeNm", "Cd"])
+                    && !PERSON_CODES.contains(&value) =>
+            {
+                self.scheme_code(value, true, line);
+            }
             (Some("SchmeNm"), "Prtry") if is_creditor_scheme_name(stack) && value != "SEPA" => {
                 self.repeat(
                     "scheme-name",
@@ -684,6 +951,41 @@ impl Rules {
             }
             _ => {}
         }
+    }
+
+    /// FinInstnId/Othr/Id of a debtor's or creditor's bank, where DK allows it.
+    fn is_agent_other(&self, stack: &[String]) -> bool {
+        ends_with(stack, &["DbtrAgt", "FinInstnId", "Othr", "Id"])
+            || (self.kind == Kind::DirectDebit
+                && ends_with(stack, &["CdtrAgt", "FinInstnId", "Othr", "Id"]))
+    }
+
+    /// DK Anlage 3: "Nur die Codes der externen ISO 20022-Code-Liste sind
+    /// zulässig." A warning, because ISO adds codes to the list over time.
+    fn scheme_code(&mut self, value: &str, person: bool, line: u32) {
+        let (key, party, hint) = if person {
+            (
+                "person-scheme-code",
+                "a person",
+                "Codes this app knows: ARNU, CCPT, CUST, DRLC, EMPL, NIDN, POID, SOSE, TELE, TXID. \
+                 ISO adds codes over time; use Prtry for a name of your own.",
+            )
+        } else {
+            (
+                "organisation-scheme-code",
+                "an organisation",
+                "Codes this app knows: BANK, BDID, BOID, CBID, CHID, CINC, COID, CUST, DUNS, EMPL, \
+                 GS1G, SREN, SRET, TXID. ISO adds codes over time; use Prtry for a name of your own.",
+            )
+        };
+        self.repeat_as(
+            key,
+            Group::AccountsParties,
+            (Severity::Warning, "ISO external code list"),
+            line,
+            || format!("SchmeNm/Cd '{value}' is not a known ISO code for identifying {party}"),
+            hint,
+        );
     }
 
     /// DK Anlage 3, "Zeichensatz": the Latin character set, plus the umlauts,
@@ -1060,6 +1362,17 @@ struct Address {
     town: bool,
     country: bool,
     lines: u32,
+}
+
+/// One <OrgId> or <PrvtId> of a party.
+#[derive(Default)]
+struct PartyId {
+    owner: String,
+    private: bool,
+    line: u32,
+    /// AnyBIC (BICOrBEI), LEI or DtAndPlcOfBirth, as found.
+    kinds: Vec<String>,
+    others: u32,
 }
 
 /// One <MndtRltdInf>.
@@ -1713,6 +2026,233 @@ mod tests {
         assert_one(&xml, line_of(&xml, "<Prtry>CORE"), "'CORE' must be SEPA");
     }
 
+    const OTHER_ACCOUNT: &str = "<Othr>\n              <Id>202051</Id>\n            </Othr>";
+
+    #[test]
+    fn accounts_are_ibans() {
+        let xml = DD.replace("<IBAN>DE02120300000000202051</IBAN>", OTHER_ACCOUNT);
+        assert_one(
+            &xml,
+            line_of(&xml, "<Id>202051") - 1,
+            "DbtrAcct is given as Othr",
+        );
+        let xml = DD.replace("<IBAN>DE89370400440532013000</IBAN>", OTHER_ACCOUNT);
+        assert_one(
+            &xml,
+            line_of(&xml, "<Id>202051") - 1,
+            "CdtrAcct is given as Othr",
+        );
+        let xml = CT.replace("<IBAN>DE89370400440532013000</IBAN>", OTHER_ACCOUNT);
+        assert_one(
+            &xml,
+            line_of(&xml, "<Id>202051") - 1,
+            "DbtrAcct is given as Othr",
+        );
+        // SMNDA in the mandate's old account is not an account of the payment.
+        assert_eq!(check(&pain008(SMNDA_ACCT)), vec![]);
+    }
+
+    fn agent(name: &str, id: &str) -> String {
+        format!(
+            "        <{name}>\n          <FinInstnId>\n{id}          </FinInstnId>\n        </{name}>\n"
+        )
+    }
+
+    fn other_agent(id: &str) -> String {
+        format!("            <Othr>\n              <Id>{id}</Id>\n            </Othr>\n")
+    }
+
+    #[test]
+    fn banks_without_a_bic_are_notprovided() {
+        let bic = "            <BICFI>COBADEFFXXX</BICFI>\n";
+        let debtor_agent = |id: &str| DD.replace(bic, &other_agent(id));
+        assert_eq!(check(&debtor_agent("NOTPROVIDED")), vec![]);
+        let xml = debtor_agent("37040044");
+        assert_one(
+            &xml,
+            line_of(&xml, "<Id>37040044"),
+            "DbtrAgt is identified by Othr/Id '37040044'",
+        );
+        // The creditor's bank of a direct debit follows the same rule.
+        let before = "      <CdtrSchmeId>\n";
+        let creditor_agent = |id: &str| {
+            let agent = agent("CdtrAgt", &other_agent(id));
+            DD.replace(before, &format!("{agent}{before}"))
+        };
+        assert_eq!(check(&creditor_agent("NOTPROVIDED")), vec![]);
+        let xml = creditor_agent("BANK-1");
+        assert_one(&xml, line_of(&xml, "<Id>BANK-1"), "CdtrAgt is identified");
+        // Older versions call the BIC element BIC; the rule is the same.
+        let old = debtor_agent("37040044").replace("pain.008.001.08", "pain.008.001.02");
+        assert_one(&old, line_of(&old, "<Id>37040044"), "only NOTPROVIDED");
+    }
+
+    #[test]
+    fn the_creditors_bank_of_a_credit_transfer_is_a_bic() {
+        let before = "        <Cdtr>\n";
+        let with_agent =
+            |id: &str| CT.replace(before, &format!("{}{before}", agent("CdtrAgt", id)));
+        assert_eq!(
+            check(&with_agent("            <BICFI>COBADEFFXXX</BICFI>\n")),
+            vec![]
+        );
+        let xml = with_agent(&other_agent("NOTPROVIDED"));
+        assert_one(&xml, line_of(&xml, "<Othr>"), "CdtrAgt is given as Othr");
+    }
+
+    /// A party's <Id> with `content` inside <OrgId> or <PrvtId>.
+    fn party_id(kind: &str, content: &[&str]) -> String {
+        let mut id = format!("          <Id>\n            <{kind}>\n");
+        for c in content {
+            id += &match *c {
+                "Othr" => "              <Othr>\n                <Id>4711</Id>\n              </Othr>\n".to_string(),
+                "DtAndPlcOfBirth" => "              <DtAndPlcOfBirth>\n                <BirthDt>1980-01-01</BirthDt>\n                <CityOfBirth>Bonn</CityOfBirth>\n                <CtryOfBirth>DE</CtryOfBirth>\n              </DtAndPlcOfBirth>\n".to_string(),
+                "LEI" => "              <LEI>529900T8BM49AURSDO55</LEI>\n".to_string(),
+                bic => format!("              <{bic}>COBADEFFXXX</{bic}>\n"),
+            };
+        }
+        id + &format!("            </{kind}>\n          </Id>\n")
+    }
+
+    #[test]
+    fn organisations_have_one_identification() {
+        for one in ["AnyBIC", "LEI", "Othr"] {
+            assert_eq!(
+                check(&creditor(&party_id("OrgId", &[one]))),
+                vec![],
+                "{one}"
+            );
+        }
+        let xml = creditor(&party_id("OrgId", &["AnyBIC", "Othr"]));
+        assert_one(
+            &xml,
+            line_of(&xml, "<OrgId>"),
+            "Cdtr/Id/OrgId has AnyBIC and Othr; DK allows only one of them",
+        );
+        let xml = creditor(&party_id("OrgId", &["AnyBIC", "LEI"]));
+        assert_one(&xml, line_of(&xml, "<OrgId>"), "has AnyBIC and LEI");
+        let xml = creditor(&party_id("OrgId", &["Othr", "Othr"]));
+        assert_one(
+            &xml,
+            line_of(&xml, "<OrgId>"),
+            "has 2 Othr; DK allows at most 1",
+        );
+        // Before ISO 2019 the BIC is called BICOrBEI.
+        let old = creditor(&party_id("OrgId", &["BICOrBEI", "Othr"]))
+            .replace("pain.001.001.09", "pain.001.001.03");
+        assert_one(&old, line_of(&old, "<OrgId>"), "has BICOrBEI and Othr");
+    }
+
+    #[test]
+    fn the_debtor_may_combine_organisation_identifications() {
+        let debtor = |id: &str| DD.replace(DEBTOR_NAME, &format!("{DEBTOR_NAME}{id}"));
+        assert_eq!(
+            check(&debtor(&party_id("OrgId", &["AnyBIC", "LEI", "Othr"]))),
+            vec![]
+        );
+        let xml = debtor(&party_id("OrgId", &["Othr", "Othr"]));
+        assert_one(&xml, line_of(&xml, "<OrgId>"), "Dbtr/Id/OrgId has 2 Othr");
+    }
+
+    #[test]
+    fn persons_have_birth_data_or_one_other_identification() {
+        for one in ["DtAndPlcOfBirth", "Othr"] {
+            assert_eq!(
+                check(&creditor(&party_id("PrvtId", &[one]))),
+                vec![],
+                "{one}"
+            );
+        }
+        let xml = creditor(&party_id("PrvtId", &["DtAndPlcOfBirth", "Othr"]));
+        assert_one(
+            &xml,
+            line_of(&xml, "<PrvtId>"),
+            "Cdtr/Id/PrvtId has DtAndPlcOfBirth and Othr",
+        );
+    }
+
+    #[test]
+    fn unknown_scheme_codes_are_warnings() {
+        let with_code = |kind: &str, code: &str| {
+            creditor(&party_id(kind, &["Othr"])).replace(
+                "                <Id>4711</Id>\n",
+                &format!("                <Id>4711</Id>\n                <SchmeNm>\n                  <Cd>{code}</Cd>\n                </SchmeNm>\n"),
+            )
+        };
+        assert_eq!(check(&with_code("OrgId", "CUST")), vec![]);
+        assert_eq!(check(&with_code("PrvtId", "NIDN")), vec![]);
+        for (kind, code, party) in [
+            ("OrgId", "NIDN", "an organisation"),
+            ("PrvtId", "DUNS", "a person"),
+        ] {
+            let xml = with_code(kind, code);
+            let out = check(&xml);
+            assert_eq!(out.len(), 1, "{out:?}");
+            assert_eq!(out[0].severity, Severity::Warning);
+            assert_eq!(out[0].line, Some(line_of(&xml, &format!("<Cd>{code}"))));
+            assert!(
+                out[0].text.contains(&format!("'{code}'")),
+                "{}",
+                out[0].text
+            );
+            assert!(out[0].text.contains(party), "{}", out[0].text);
+            assert!(
+                out[0].text.contains("(ISO external code list)"),
+                "{}",
+                out[0].text
+            );
+        }
+    }
+
+    #[test]
+    fn control_sums_have_2_decimals() {
+        let msg = "      <MsgId>MSG-1</MsgId>\n";
+        let xml = CT.replace(msg, &format!("{msg}      <CtrlSum>10.000</CtrlSum>\n"));
+        assert_one(
+            &xml,
+            line_of(&xml, "<CtrlSum>"),
+            "CtrlSum 10.000 has more than 2",
+        );
+        let pmt = "      <PmtInfId>PMT-1</PmtInfId>\n";
+        let xml = DD.replace(pmt, &format!("{pmt}      <CtrlSum>10.005</CtrlSum>\n"));
+        assert_one(
+            &xml,
+            line_of(&xml, "<CtrlSum>"),
+            "CtrlSum 10.005 has more than 2",
+        );
+        assert_eq!(
+            check(&CT.replace(msg, &format!("{msg}      <CtrlSum>10.00</CtrlSum>\n"))),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_msg_id_shared_by_two_files_of_a_run_is_a_warning() {
+        let mut ids = MessageIds::default();
+        assert_eq!(ids.check(CT, "a.xml", "/in/a.xml", &[]), None);
+        // The same file again (e.g. listed twice) is not a second file.
+        assert_eq!(ids.check(CT, "a.xml", "/in/a.xml", &[]), None);
+        let m = ids.check(DD, "b.xml", "/in/b.xml", &[]).unwrap();
+        assert_eq!(m.severity, Severity::Warning);
+        assert_eq!(m.line, Some(line_of(DD, "<MsgId>")));
+        let text = "MsgId 'MSG-1' is also used by a.xml, which has other content";
+        assert!(m.text.starts_with(text), "{}", m.text);
+        assert!(m.hint.is_some());
+        // A copy of the first file says so.
+        let m = ids.check(CT, "copy.xml", "/in/copy.xml", &[]).unwrap();
+        let text = "MsgId 'MSG-1' is also used by a.xml, which has the same content";
+        assert!(m.text.starts_with(text), "{}", m.text);
+        // Another MsgId, a switched-off group and files outside the DK rules.
+        let other = DD.replace("MSG-1", "MSG-2");
+        assert_eq!(ids.check(&other, "c.xml", "/in/c.xml", &[]), None);
+        assert_eq!(
+            ids.check(DD, "d.xml", "/in/d.xml", &[Group::References]),
+            None
+        );
+        let camt = CT.replace("pain.001.001.09", "camt.053.001.08");
+        assert_eq!(ids.check(&camt, "e.xml", "/in/e.xml", &[]), None);
+    }
+
     #[test]
     fn disabled_groups_are_skipped() {
         let xml = DD
@@ -1733,15 +2273,22 @@ mod tests {
             Group::Creditor,
             Group::AmountsNames,
             Group::AddressesRemittance,
+            Group::AccountsParties,
         ];
         assert_eq!(check_without(&xml, &all), vec![]);
+        let other = DD.replace(
+            "<IBAN>DE02120300000000202051</IBAN>",
+            "<Othr>\n              <Id>202051</Id>\n            </Othr>",
+        );
+        assert_eq!(errors(&other).len(), 1);
+        assert_eq!(check_without(&other, &[Group::AccountsParties]), vec![]);
     }
 
     #[test]
     fn groups_have_stable_names_for_the_settings() {
-        let names = r#"["characters","references","payment-type","creditor","amounts-names","addresses-remittance"]"#;
+        let names = r#"["characters","references","payment-type","creditor","amounts-names","addresses-remittance","accounts-parties"]"#;
         let groups: Vec<Group> = serde_json::from_str(names).unwrap();
-        assert_eq!(groups.len(), 6);
+        assert_eq!(groups.len(), 7);
         assert_eq!(serde_json::to_string(&groups).unwrap(), names);
     }
 
