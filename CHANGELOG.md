@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **More DK usage rules** for SEPA credit transfers and direct debits, reported as errors:
+  - An account (`DbtrAcct`, `CdtrAcct`) given as `Othr` instead of an IBAN.
+  - A bank without a BIC whose `FinInstnId/Othr/Id` is anything but `NOTPROVIDED`; in a credit transfer, a creditor's bank (`CdtrAgt`) given as `Othr` at all.
+  - Party identification: an organisation (`OrgId`) with more than one of BIC, `LEI` and `Othr` (the debtor and ultimate debtor may combine them), a person (`PrvtId`) with both `DtAndPlcOfBirth` and `Othr`, or more than one `Othr`. A scheme code (`SchmeNm/Cd`) that is not in the ISO code list is a warning.
+  - A control sum (`CtrlSum`) with more than 2 decimal places.
+- **A MsgId shared by two files of a run is a warning.** Banks use the `MsgId` to detect files that were submitted twice. The warning says whether the other file is a copy with the same content or another file.
+- **Mandate signature dates are checked.** A `DtOfSgntr` after the collection date or in the future is a warning (once per file, with the number of further ones).
+- **Settings: a seventh rule group**, "Accounts, banks and party IDs", for the account, bank and party identification rules. It is on by default; saved settings stay valid.
+
 ## [2.8.0] - 2026-11-16
 
 ### Added

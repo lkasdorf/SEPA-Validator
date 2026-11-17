@@ -7,7 +7,8 @@ export type RuleGroup =
   | "payment-type"
   | "creditor"
   | "amounts-names"
-  | "addresses-remittance";
+  | "addresses-remittance"
+  | "accounts-parties";
 
 export const RULE_GROUPS: { id: RuleGroup; label: string; detail: string }[] = [
   {
@@ -18,7 +19,8 @@ export const RULE_GROUPS: { id: RuleGroup; label: string; detail: string }[] = [
   {
     id: "references",
     label: "References and IDs",
-    detail: "MsgId, PmtInfId, EndToEndId, MndtId … must not start or end with / or contain //.",
+    detail:
+      "MsgId, PmtInfId, EndToEndId, MndtId … must not start or end with / or contain //; no two files of a run with the same MsgId.",
   },
   {
     id: "payment-type",
@@ -34,13 +36,20 @@ export const RULE_GROUPS: { id: RuleGroup; label: string; detail: string }[] = [
   {
     id: "amounts-names",
     label: "Amounts and names",
-    detail: "Names at most 70 characters; amounts 0.01 to 999,999,999.99 with 2 decimals; direct debits in EUR.",
+    detail:
+      "Names at most 70 characters; amounts 0.01 to 999,999,999.99 and control sums with 2 decimals; direct debits in EUR.",
   },
   {
     id: "addresses-remittance",
     label: "Addresses and remittance information",
     detail:
       "Postal addresses with town and country (ISO 2019 versions), debtor address outside the EU/EEA; one Ustrd or one Strd (SCOR).",
+  },
+  {
+    id: "accounts-parties",
+    label: "Accounts, banks and party IDs",
+    detail:
+      "Accounts as IBAN; banks by BIC or NOTPROVIDED; one identification per organisation or person (OrgId, PrvtId) with a known scheme code.",
   },
 ];
 

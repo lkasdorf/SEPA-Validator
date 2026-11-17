@@ -27,8 +27,8 @@ The original PowerShell/WinForms tool was retired in favour of the desktop app. 
 
 - **Überweisungen und Lastschriften** (pain.001, pain.008), Statusmeldungen (pain.002), Storno-Aufträge (pain.007) sowie **Kontoauszüge und Umsatzmeldungen** (camt.052, camt.053, camt.054).
 - **Das passende Schema je Datei:** Die Deutsche Kreditwirtschaft hat für pain.001.001.09 drei Varianten mit demselben Namespace (SEPA, Eilüberweisung CCU, Auslandszahlung AXZ). Die App erkennt die Variante am Inhalt. Schweizer Dateien (Swiss Payment Standards) erkennt sie an der IBAN des Auftraggebers.
-- **Plausibilität**, die kein XSD abdeckt: Anzahl und Kontrollsumme gegen die tatsächlichen Buchungen, IBAN-Prüfziffer, Ausführungs- oder Fälligkeitsdatum in der Vergangenheit, doppelte EndToEndIds. Bei Kontoauszügen: Anfangssaldo plus Buchungen muss den Schlusssaldo ergeben.
-- **DK-Belegungsrichtlinien** für SEPA-Überweisungen und -Lastschriften, die das Schema zulässt, die Banken aber ablehnen, als Fehler: z. B. Zeichensatz, Schrägstriche in Referenzen, CORE und B2B gemischt, Gläubiger-ID mit falscher Prüfziffer, Namen über 70 Zeichen, Adressen ohne Ort und Land oder bei Mandatsänderungen `SMNDA` zusammen mit der alten BIC (`OrgnlDbtrAgt`).
+- **Plausibilität**, die kein XSD abdeckt: Anzahl und Kontrollsumme gegen die tatsächlichen Buchungen, IBAN-Prüfziffer, Ausführungs- oder Fälligkeitsdatum in der Vergangenheit, doppelte EndToEndIds, Mandatsdatum nach dem Fälligkeitsdatum, dieselbe MsgId in mehreren Dateien. Bei Kontoauszügen: Anfangssaldo plus Buchungen muss den Schlusssaldo ergeben.
+- **DK-Belegungsrichtlinien** für SEPA-Überweisungen und -Lastschriften, die das Schema zulässt, die Banken aber ablehnen, als Fehler: z. B. Zeichensatz, Schrägstriche in Referenzen, CORE und B2B gemischt, Gläubiger-ID mit falscher Prüfziffer, Namen über 70 Zeichen, Adressen ohne Ort und Land, Konten ohne IBAN oder bei Mandatsänderungen `SMNDA` zusammen mit der alten BIC (`OrgnlDbtrAgt`).
 - **Verständliche Meldungen mit Hinweis**, z. B. „Use a dot as the decimal separator“. Ein Klick auf einen Fehler springt zur Zeile im formatierten XML.
 
 **Außerdem:** Übersicht über Auftraggeber, Zahlungsblöcke und Summen; Umsatzliste mit GVC-Namen (nach Import der DK-Tabelle) und CSV-Export für Excel; Bearbeiten im Viewer (gespeichert wird immer eine Kopie); synthetische camt.053-Kontoauszüge aus einer Zahlungsdatei, um Kontoauszugs-Importe zu testen.
@@ -56,6 +56,7 @@ A native Windows application that validates one or many files at once and lets y
   - IBAN check digits (mod 97).
   - Execution or collection dates in the past.
   - Duplicate EndToEndIds.
+  - Mandate signature dates (`DtOfSgntr`) after the collection date or in the future.
   - Statements (camt): opening balance plus booked entries must equal the closing balance, and the transaction summary must match the entries.
 - **DK usage rules** that the schema accepts but banks following the German DK rules reject, reported as **errors**. They apply to SEPA credit transfers and direct debits, not to Swiss files or the DK urgent and foreign subsets:
   - Character set: only the Latin characters, plus umlauts, ß, `& * $ %`; references and IDs without those extras.
@@ -68,6 +69,9 @@ A native Windows application that validates one or many files at once and lets y
   - From pain.001.001.09 / pain.008.001.08 on: postal addresses with town and country and at most 2 address lines.
   - Remittance information: one `Ustrd` or one `Strd` (creditor reference `SCOR` only, at most 140 characters). An RF reference with wrong check digits is a warning.
   - `UltmtDbtr`/`UltmtCdtr` and `ChrgBr` on one level only; `ChrgBr` `SLEV` in direct debits; creditor identifier scheme `SEPA`.
+  - Accounts as IBAN, never `Othr`; a bank without a BIC as `NOTPROVIDED` (in credit transfers the creditor's bank by BIC only); control sums with at most 2 decimals.
+  - Party identification: one of BIC, `LEI` or `Othr` per organisation (the debtor may combine them), date and place of birth or one `Othr` per person. An unknown ISO scheme code is a warning.
+  - The same `MsgId` in two files of one run is a warning, which says whether the files are copies.
 - **Settings.** Menu → **Settings…** switches groups of DK usage rules off (all are on by default), e.g. the address rules if your bank still accepts unstructured addresses.
 - **Readable messages with hints.** For example: "Use a dot as the decimal separator, e.g. 1250.00." or "Required element <InitgPty> is missing in <GrpHdr>."
 - **Live log, click to the error.** Results stream in as files are validated. Click any error to jump to its line in a syntax-highlighted, pretty-printed XML viewer. Search with `Ctrl+F`, fold blocks, and **Cancel** a long run.

@@ -29,7 +29,7 @@ describe("setRuleGroup", () => {
 });
 
 describe("RULE_GROUPS", () => {
-  it("has the six backend groups", () => {
+  it("has the seven backend groups", () => {
     expect(RULE_GROUPS.map((g) => g.id)).toEqual([
       "characters",
       "references",
@@ -37,6 +37,7 @@ describe("RULE_GROUPS", () => {
       "creditor",
       "amounts-names",
       "addresses-remittance",
+      "accounts-parties",
     ]);
   });
 });

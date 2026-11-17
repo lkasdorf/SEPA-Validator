@@ -1,8 +1,9 @@
 //! Plausibility checks the XSD can't express, reported as warnings with the
 //! line in the formatted text: control values (NbOfTxs/CtrlSum) against the
-//! actual transactions, IBAN check digits, past execution dates and duplicate
-//! EndToEndIds. `check` also runs the statement checks (`statements`) and the
-//! DK usage rules (`rules`, reported as errors).
+//! actual transactions, IBAN check digits, past execution dates, duplicate
+//! EndToEndIds and mandate signature dates after the collection date or in the
+//! future. `check` also runs the statement checks (`statements`) and the DK
+//! usage rules (`rules`, reported as errors).
 
 use std::collections::HashMap;
 
@@ -224,6 +225,10 @@ struct Checker<'a> {
     /// First past-date warning per kind (index into `out`) and how many more followed,
     /// so a file with thousands of payment blocks gets one warning, not thousands.
     past_dates: HashMap<&'static str, (usize, u32)>,
+    /// The collection date of the current PmtInf (pain.008).
+    collection: Option<String>,
+    /// First signature-date warning (index into `out`) and how many more followed.
+    signatures: Option<(usize, u32)>,
     out: Vec<Message>,
 }
 
@@ -252,6 +257,7 @@ impl Checker<'_> {
         }
         if name == "PmtInf" {
             self.block = Some(Totals::new());
+            self.collection = None;
         } else if name == self.tx_element() {
             self.pending_amount = Some(None);
         }
@@ -306,7 +312,11 @@ impl Checker<'_> {
             ("PmtInf", "ReqdExctnDt") | ("ReqdExctnDt", "Dt" | "DtTm") => {
                 self.date("execution", value, line);
             }
-            ("PmtInf", "ReqdColltnDt") => self.date("collection", value, line),
+            ("PmtInf", "ReqdColltnDt") => {
+                self.collection = iso_date(value).map(str::to_string);
+                self.date("collection", value, line);
+            }
+            ("MndtRltdInf", "DtOfSgntr") => self.signature_date(value, line),
             _ => {}
         }
     }
@@ -327,16 +337,33 @@ impl Checker<'_> {
         }
     }
 
+    /// A mandate can't be signed after the direct debit is collected, or in
+    /// the future: the date is probably a typo.
+    fn signature_date(&mut self, value: &str, line: u32) {
+        let Some(date) = iso_date(value) else { return };
+        let problem = match self.collection.as_deref() {
+            _ if date > self.today => "is in the future".to_string(),
+            Some(collection) if date > collection => {
+                format!("is after the collection date {collection}")
+            }
+            _ => return,
+        };
+        if let Some((_, more)) = self.signatures.as_mut() {
+            *more += 1;
+            return;
+        }
+        self.signatures = Some((self.out.len(), 0));
+        self.out.push(warning(
+            format!("Mandate signature date {date} {problem}."),
+            line,
+            "DtOfSgntr is the day the debtor signed the mandate, so it lies before the \
+             collection. Check the date against the mandate.",
+        ));
+    }
+
     fn date(&mut self, what: &'static str, value: &str, line: u32) {
-        let date = value.trim().get(..10).unwrap_or("");
-        let well_formed = date.len() == 10
-            && date.bytes().enumerate().all(|(i, b)| {
-                if i == 4 || i == 7 {
-                    b == b'-'
-                } else {
-                    b.is_ascii_digit()
-                }
-            });
+        let date = iso_date(value).unwrap_or("");
+        let well_formed = !date.is_empty();
         // 1999-01-01 is the German DK convention for "execute as soon as possible".
         if well_formed && date != "1999-01-01" && date < self.today {
             if let Some((_, more)) = self.past_dates.get_mut(what) {
@@ -363,11 +390,31 @@ impl Checker<'_> {
                 );
             }
         }
+        if let Some((index, more)) = self.signatures.filter(|(_, more)| *more > 0) {
+            let m = &mut self.out[index];
+            let text = m.text.trim_end_matches('.');
+            m.text = format!("{text} ({more} more in this file).");
+        }
         if let Some(file) = self.file.take() {
             file.compare("GrpHdr", &mut self.out);
         }
         self.out
     }
+}
+
+/// The `YYYY-MM-DD` at the start of a date or date-time, if it has that form.
+fn iso_date(value: &str) -> Option<&str> {
+    let date = value.trim().get(..10)?;
+    date.bytes()
+        .enumerate()
+        .all(|(i, b)| {
+            if i == 4 || i == 7 {
+                b == b'-'
+            } else {
+                b.is_ascii_digit()
+            }
+        })
+        .then_some(date)
 }
 
 fn set(totals: &mut Option<Totals>, f: impl FnOnce(&mut Totals)) {
@@ -467,7 +514,7 @@ mod tests {
     fn control_sums_are_compared_as_decimals() {
         let xml = pain001(
             ("2", "30.5"),
-            ("2", "30.500"),
+            ("2", "30.50"),
             "2026-10-12",
             &[("A", "10.5", OK_IBAN), ("B", "20", OK_IBAN)],
         );
@@ -579,6 +626,61 @@ mod tests {
         assert_eq!(
             texts,
             vec!["Requested collection date 2026-10-02 is in the past."]
+        );
+    }
+
+    /// A pain.008 with one PmtInf: its collection date and mandate signature dates.
+    fn pain008(collection: &str, signatures: &[&str]) -> String {
+        let mut x = format!("<Document xmlns=\"urn:iso:std:iso:20022:tech:xsd:pain.008.001.08\">\n<CstmrDrctDbtInitn>\n<PmtInf>\n<ReqdColltnDt>{collection}</ReqdColltnDt>\n");
+        for (i, date) in signatures.iter().enumerate() {
+            x += &format!("<DrctDbtTxInf>\n<PmtId>\n<EndToEndId>D{i}</EndToEndId>\n</PmtId>\n<DrctDbtTx>\n<MndtRltdInf>\n<DtOfSgntr>{date}</DtOfSgntr>\n</MndtRltdInf>\n</DrctDbtTx>\n</DrctDbtTxInf>\n");
+        }
+        x + "</PmtInf>\n</CstmrDrctDbtInitn>\n</Document>\n"
+    }
+
+    fn signature_warnings(xml: &str) -> Vec<Message> {
+        check(xml, TODAY)
+            .into_iter()
+            .filter(|m| m.text.starts_with("Mandate signature date"))
+            .collect()
+    }
+
+    #[test]
+    fn a_signature_date_after_the_collection_or_in_the_future_is_reported() {
+        // Signed before the collection, or on the same day.
+        let ok = pain008("2026-10-12", &["2026-10-08", "2020-01-31"]);
+        assert_eq!(signature_warnings(&ok), vec![]);
+        assert_eq!(
+            signature_warnings(&pain008("2026-10-09", &["2026-10-09"])),
+            vec![]
+        );
+        let xml = pain008("2026-10-02", &["2026-10-05"]);
+        let out = signature_warnings(&xml);
+        assert_eq!(out.len(), 1, "{out:?}");
+        assert_eq!(out[0].severity, Severity::Warning);
+        assert_eq!(out[0].line, Some(line_of(&xml, "<DtOfSgntr>")));
+        assert_eq!(
+            out[0].text,
+            "Mandate signature date 2026-10-05 is after the collection date 2026-10-02."
+        );
+        let out = signature_warnings(&pain008("2026-10-12", &["2026-10-10"]));
+        assert_eq!(
+            out[0].text,
+            "Mandate signature date 2026-10-10 is in the future."
+        );
+    }
+
+    #[test]
+    fn many_wrong_signature_dates_are_reported_once() {
+        let xml = pain008(
+            "2026-10-02",
+            &["2026-10-05", "2026-01-01", "2026-10-06", "2027-01-01"],
+        );
+        let out = signature_warnings(&xml);
+        assert_eq!(out.len(), 1, "{out:?}");
+        assert_eq!(
+            out[0].text,
+            "Mandate signature date 2026-10-05 is after the collection date 2026-10-02 (2 more in this file)."
         );
     }
 

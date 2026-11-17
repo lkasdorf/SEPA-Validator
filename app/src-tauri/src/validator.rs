@@ -203,6 +203,8 @@ pub struct Validator {
     cache: HashMap<&'static str, SchemaValidationContext>,
     /// DK rule groups switched off in the settings.
     disabled_rules: Vec<crate::rules::Group>,
+    /// The MsgIds of the files validated so far, to find files that share one.
+    message_ids: crate::rules::MessageIds,
 }
 
 impl Validator {
@@ -212,6 +214,7 @@ impl Validator {
             schema_dir,
             cache: HashMap::new(),
             disabled_rules: Vec::new(),
+            message_ids: crate::rules::MessageIds::default(),
         }
     }
 
@@ -411,11 +414,19 @@ impl Validator {
             }
         }
         // Checks the schema can't express (control sums, IBAN check digits, ...).
-        messages.extend(crate::plausibility::check_without(
+        let mut checks = crate::plausibility::check_without(
             &formatted,
             &crate::plausibility::today(),
             &self.disabled_rules,
-        ));
+        );
+        let shared_id = self
+            .message_ids
+            .check(&formatted, &file, &path_str, &self.disabled_rules);
+        if let Some(m) = shared_id {
+            checks.push(m);
+            checks.sort_by_key(|m| m.line);
+        }
+        messages.extend(checks);
 
         ValidationResult::from_messages(file, path_str, ns, schema_name.to_string(), messages)
     }
