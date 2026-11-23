@@ -57,12 +57,20 @@ jobs:
           npm test
           npm run build
 
-      # libxml2 is built once per vcpkg commit; later runs restore the binary package.
+      # libxml2 is built once per vcpkg commit and runner image; later runs restore
+      # the binary package. vcpkg only reuses a package built with the same
+      # compiler, so the key carries the image version: with a fixed key, a new
+      # image left a cache that never matched and was never replaced.
+      - name: Runner image version
+        id: image
+        shell: pwsh
+        run: '"version=$($env:ImageOS)-$($env:ImageVersion)" >> $env:GITHUB_OUTPUT'
+
       - name: Cache vcpkg binary packages
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/vcpkg-bincache
-          key: vcpkg-${{ env.VCPKG_COMMIT }}-${{ env.VCPKGRS_TRIPLET }}-libxml2-core-zlib
+          key: vcpkg-${{ env.VCPKG_COMMIT }}-${{ env.VCPKGRS_TRIPLET }}-libxml2-core-zlib-${{ steps.image.outputs.version }}
 
       - name: libxml2 via vcpkg (pinned)
         shell: pwsh
