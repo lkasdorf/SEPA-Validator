@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.1] - 2026-11-23
+
 ### Fixed
 - **Two ISO scheme codes no longer cause a warning.** `BANK` for a person (`PrvtId`) and `USID` for an organisation (`OrgId`) are in the ISO external code sets, but 2.9.0 reported them as unknown. The lists now match the official edition 2Q2026.
 
@@ -207,7 +209,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release: native Windows GUI SEPA XML Validator (PowerShell/WinForms) with full XSD validation, drag & drop, file/folder selection, batch validation, and TXT export.
 - Bash CLI scripts for validation, batch validation, and renaming XML files by date/company/schema.
 
-[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.9.0...HEAD
+[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.9.1...HEAD
+[2.9.1]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.9.0...v2.9.1
 [2.9.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.7.0...v2.8.0
 [2.7.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.6.1...v2.7.0
