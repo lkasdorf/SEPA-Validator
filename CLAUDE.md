@@ -93,7 +93,7 @@ Tauri v2 backend (Rust, `src-tauri/`) + Svelte 5/TypeScript/Vite frontend (`src/
   - Frontend: `npm run check`, `npm test`, `npm run build`.
   - Rust: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.
   - Notices: the freshness check for `THIRD-PARTY-NOTICES.txt`.
-  - libxml2 comes from vcpkg pinned to the same commit as the local setup and is cached as a vcpkg binary package.
+  - libxml2 comes from vcpkg pinned to the same commit as the local setup and is cached as a vcpkg binary package. The cache key includes the runner image version (`ImageOS`-`ImageVersion`), because vcpkg only reuses packages built with the same compiler; `release.yml` uses the same key.
 - **Release** (`release.yml`, on tag `v*`):
   - `tauri build --no-bundle` + `tauri bundle --no-sign`, then a draft release (via `gh`) with the installer, `.sig`, `latest.json`, the portable exe and the notices. `scripts/release-assets.mjs` patches the NSIS bundle type into app.exe before signing and writes `latest.json`.
   - Authenticode signing is prepared for SignPath (two signing requests: binaries, then installer) and is on only when the repo variable `SIGNPATH_ORGANIZATION_ID` is set. It is currently off: the SignPath Foundation application was declined (2026-11, too little public visibility), so releases are unsigned. Policy: `CODE_SIGNING_POLICY.md`; setup and artifact configurations: `RELEASING.md`.

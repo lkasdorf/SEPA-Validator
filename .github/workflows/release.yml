@@ -74,11 +74,18 @@ jobs:
         working-directory: app
         run: npm ci
 
+      # Same key as in ci.yml (vcpkg commit, triplet and runner image), so a
+      # release restores the packages a CI run on master built on the same image.
+      - name: Runner image version
+        id: image
+        shell: pwsh
+        run: '"version=$($env:ImageOS)-$($env:ImageVersion)" >> $env:GITHUB_OUTPUT'
+
       - name: Cache vcpkg binary packages
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/vcpkg-bincache
-          key: vcpkg-${{ env.VCPKG_COMMIT }}-${{ env.VCPKGRS_TRIPLET }}-libxml2-core-zlib
+          key: vcpkg-${{ env.VCPKG_COMMIT }}-${{ env.VCPKGRS_TRIPLET }}-libxml2-core-zlib-${{ steps.image.outputs.version }}
 
       - name: libxml2 via vcpkg (pinned)
         shell: pwsh
