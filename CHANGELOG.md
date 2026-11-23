@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-11-23
+
 ### Added
 - **DK rule: a bank is identified by its BIC or `Othr` only.** In SEPA credit transfers and direct debits, `FinInstnId` of `DbtrAgt`, `CdtrAgt` and `OrgnlDbtrAgt` must not contain a clearing code (`ClrSysMmbId`), an `LEI`, a name (`Nm`) or an address (`PstlAdr`), and not both a BIC and `Othr`. Such files are now reported as errors. The rule is in the settings group "Accounts, banks and party IDs". Foreign and urgent payments (AXZ, CCU) and Swiss files, where these elements are allowed, are not affected.
 
@@ -212,7 +214,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release: native Windows GUI SEPA XML Validator (PowerShell/WinForms) with full XSD validation, drag & drop, file/folder selection, batch validation, and TXT export.
 - Bash CLI scripts for validation, batch validation, and renaming XML files by date/company/schema.
 
-[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.9.1...HEAD
+[Unreleased]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.10.0...HEAD
+[2.10.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.9.1...v2.10.0
 [2.9.1]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.9.0...v2.9.1
 [2.9.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/lkasdorf/SEPA-Validator/compare/v2.7.0...v2.8.0
