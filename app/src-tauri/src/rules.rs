@@ -338,6 +338,7 @@ struct Rules {
     structured: Option<Structured>,
     address: Option<Address>,
     party_id: Option<PartyId>,
+    bank: Option<Bank>,
 }
 
 impl Rules {
@@ -359,6 +360,7 @@ impl Rules {
             structured: None,
             address: None,
             party_id: None,
+            bank: None,
         }
     }
 
@@ -526,6 +528,43 @@ impl Rules {
                     "Give the creditor's bank as a BIC or leave CdtrAgt out; the IBAN is enough.",
                 );
             }
+            (Some(agent @ ("DbtrAgt" | "CdtrAgt" | "OrgnlDbtrAgt")), "FinInstnId") => {
+                self.bank = Some(Bank {
+                    agent: agent.to_string(),
+                    line,
+                    ..Bank::default()
+                })
+            }
+            // DK Anlage 3: "entweder <BICFI> oder <Othr><Id>". The ISO schema
+            // also allows a clearing code, the LEI, a name and an address.
+            (Some("FinInstnId"), _) => {
+                let agent = self.bank.as_mut().and_then(|bank| match name {
+                    "BICFI" | "BIC" => {
+                        bank.bic = true;
+                        None
+                    }
+                    "Othr" => {
+                        bank.other = true;
+                        None
+                    }
+                    _ => Some(bank.agent.clone()),
+                });
+                if let Some(agent) = agent {
+                    self.repeat(
+                        "agent-detail",
+                        Group::AccountsParties,
+                        line,
+                        || {
+                            format!(
+                                "{agent}/FinInstnId contains {name}; DK allows only the BIC \
+                                 (or NOTPROVIDED in Othr) there"
+                            )
+                        },
+                        "Identify the bank by its BIC alone. Clearing codes, LEIs, names and \
+                         addresses of banks are for foreign payments, not SEPA payments.",
+                    );
+                }
+            }
             (Some("Id"), "OrgId" | "PrvtId") if stack.len() >= 2 => {
                 self.party_id = Some(PartyId {
                     owner: stack[stack.len() - 2].clone(),
@@ -650,6 +689,23 @@ impl Rules {
             Some("OrgId" | "PrvtId") => {
                 if let Some(p) = self.party_id.take() {
                     self.party_id_finish(p);
+                }
+            }
+            Some("FinInstnId") => {
+                if let Some(bank) = self.bank.take().filter(|b| b.bic && b.other) {
+                    let agent = bank.agent;
+                    self.repeat(
+                        "agent-bic-and-other",
+                        Group::AccountsParties,
+                        bank.line,
+                        || {
+                            format!(
+                                "{agent}/FinInstnId has both a BIC and Othr; DK allows one or \
+                                 the other"
+                            )
+                        },
+                        "Give the bank's BIC, or NOTPROVIDED in Othr/Id if you have no BIC.",
+                    );
                 }
             }
             _ => {}
@@ -1365,6 +1421,16 @@ struct Address {
     lines: u32,
 }
 
+/// One <FinInstnId> of a debtor's or creditor's bank.
+#[derive(Default)]
+struct Bank {
+    /// DbtrAgt, CdtrAgt or OrgnlDbtrAgt.
+    agent: String,
+    line: u32,
+    bic: bool,
+    other: bool,
+}
+
 /// One <OrgId> or <PrvtId> of a party.
 #[derive(Default)]
 struct PartyId {
@@ -1836,13 +1902,15 @@ mod tests {
         // Repeated: once, with a count.
         let xml = duplicate(&xml, "      <CdtTrfTxInf>", |t| t.replace("E2E-1", "E2E-2"));
         assert_one(&xml, line_of(&xml, "<Nm>"), "1 more in this file");
-        // Only party names count.
+        // Only party names count: a bank's name is not allowed at all.
         let agent = "        <CdtrAgt>\n          <FinInstnId>\n            <Nm>".to_string()
             + &"B".repeat(100)
             + "</Nm>\n          </FinInstnId>\n        </CdtrAgt>\n";
-        assert_eq!(
-            check(&CT.replace("        <Cdtr>\n", &format!("{agent}        <Cdtr>\n"))),
-            vec![]
+        let xml = CT.replace("        <Cdtr>\n", &format!("{agent}        <Cdtr>\n"));
+        assert_one(
+            &xml,
+            line_of(&xml, "<Nm>B"),
+            "CdtrAgt/FinInstnId contains Nm",
         );
     }
 
@@ -2098,6 +2166,78 @@ mod tests {
             vec![]
         );
         let xml = with_agent(&other_agent("NOTPROVIDED"));
+        assert_one(&xml, line_of(&xml, "<Othr>"), "CdtrAgt is given as Othr");
+    }
+
+    const BIC: &str = "            <BICFI>COBADEFFXXX</BICFI>\n";
+
+    /// A child of FinInstnId that DK doesn't allow in SEPA payments.
+    fn bank_detail(name: &str) -> String {
+        let content = match name {
+            "ClrSysMmbId" => "\n              <MmbId>37040044</MmbId>\n            ",
+            "PstlAdr" => "\n              <Ctry>DE</Ctry>\n            ",
+            "LEI" => "529900T8BM49AURSDO55",
+            _ => "Commerzbank",
+        };
+        format!("            <{name}>{content}</{name}>\n")
+    }
+
+    #[test]
+    fn banks_are_identified_by_bic_or_othr_only() {
+        for extra in ["ClrSysMmbId", "LEI", "Nm", "PstlAdr"] {
+            // The debtor's bank of a direct debit, with and without a BIC.
+            let xml = DD.replace(BIC, &format!("{BIC}{}", bank_detail(extra)));
+            let text = format!("DbtrAgt/FinInstnId contains {extra}; DK allows only the BIC");
+            assert_one(&xml, line_of(&xml, &format!("<{extra}>")), &text);
+            let xml = DD.replace(BIC, &bank_detail(extra));
+            assert_one(&xml, line_of(&xml, &format!("<{extra}>")), &text);
+            // The creditor's bank of a credit transfer.
+            let before = "        <Cdtr>\n";
+            let bank = agent("CdtrAgt", &format!("{BIC}{}", bank_detail(extra)));
+            let xml = CT.replace(before, &format!("{bank}{before}"));
+            let text = format!("CdtrAgt/FinInstnId contains {extra}");
+            assert_one(&xml, line_of(&xml, &format!("<{extra}>")), &text);
+        }
+        // Several of them in a file are one finding.
+        let details = format!("{BIC}{}{}", bank_detail("Nm"), bank_detail("PstlAdr"));
+        let xml = DD.replace(BIC, &details);
+        let out = errors(&xml);
+        assert_eq!(out.len(), 1, "{out:?}");
+        assert_eq!(out[0].line, Some(line_of(&xml, "<Nm>Commerzbank")));
+        assert!(
+            out[0].text.contains("1 more in this file"),
+            "{}",
+            out[0].text
+        );
+        assert_eq!(check_without(&xml, &[Group::AccountsParties]), vec![]);
+        // The old bank in a mandate amendment follows the same rule.
+        let old_agent =
+            OLD_AGENT.replace("</BICFI>", "</BICFI>\n                  <Nm>Alte Bank</Nm>");
+        let xml = pain008(&old_agent);
+        assert_one(
+            &xml,
+            line_of(&xml, "<Nm>Alte Bank"),
+            "OrgnlDbtrAgt/FinInstnId contains Nm",
+        );
+        // Before ISO 2019 the BIC element is called BIC.
+        let old = DD
+            .replace("BICFI>", "BIC>")
+            .replace("pain.008.001.08", "pain.008.001.02");
+        assert_eq!(check(&old), vec![]);
+    }
+
+    #[test]
+    fn banks_have_a_bic_or_othr_not_both() {
+        let both = format!("{BIC}{}", other_agent("NOTPROVIDED"));
+        let xml = DD.replace(BIC, &both);
+        assert_one(
+            &xml,
+            line_of(&xml, "<FinInstnId>"),
+            "DbtrAgt/FinInstnId has both a BIC and Othr",
+        );
+        // In a credit transfer the creditor's bank takes no Othr at all: one finding.
+        let before = "        <Cdtr>\n";
+        let xml = CT.replace(before, &format!("{}{before}", agent("CdtrAgt", &both)));
         assert_one(&xml, line_of(&xml, "<Othr>"), "CdtrAgt is given as Othr");
     }
 

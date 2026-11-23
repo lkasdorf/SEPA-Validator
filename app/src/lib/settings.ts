@@ -49,7 +49,7 @@ export const RULE_GROUPS: { id: RuleGroup; label: string; detail: string }[] = [
     id: "accounts-parties",
     label: "Accounts, banks and party IDs",
     detail:
-      "Accounts as IBAN; banks by BIC or NOTPROVIDED; one identification per organisation or person (OrgId, PrvtId) with a known scheme code.",
+      "Accounts as IBAN; banks by BIC or NOTPROVIDED only, without clearing code, name or address; one identification per organisation or person (OrgId, PrvtId) with a known scheme code.",
   },
 ];
 

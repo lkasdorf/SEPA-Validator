@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **DK rule: a bank is identified by its BIC or `Othr` only.** In SEPA credit transfers and direct debits, `FinInstnId` of `DbtrAgt`, `CdtrAgt` and `OrgnlDbtrAgt` must not contain a clearing code (`ClrSysMmbId`), an `LEI`, a name (`Nm`) or an address (`PstlAdr`), and not both a BIC and `Othr`. Such files are now reported as errors. The rule is in the settings group "Accounts, banks and party IDs". Foreign and urgent payments (AXZ, CCU) and Swiss files, where these elements are allowed, are not affected.
+
 ## [2.9.1] - 2026-11-23
 
 ### Fixed
