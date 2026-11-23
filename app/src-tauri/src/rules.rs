@@ -60,18 +60,25 @@ const PARTIES: &[&str] = &[
     "OrgnlCdtrSchmeId",
 ];
 
-/// Scheme codes for an organisation's `Othr` identification (ISO 20022
-/// external code set ExternalOrganisationIdentification1Code).
+/// Scheme codes for an organisation's `Othr` identification: the ISO 20022
+/// external code set ExternalOrganisationIdentification1Code, edition 2Q2026
+/// (iso20022.org, "External Code Sets"; a new edition comes each quarter).
 const ORGANISATION_CODES: &[&str] = &[
     "BANK", "BDID", "BOID", "CBID", "CHID", "CINC", "COID", "CUST", "DUNS", "EMPL", "GS1G", "SREN",
-    "SRET", "TXID",
+    "SRET", "TXID", "USID",
 ];
+const ORGANISATION_CODES_HINT: &str =
+    "Codes this app knows: BANK, BDID, BOID, CBID, CHID, CINC, COID, CUST, DUNS, EMPL, GS1G, \
+     SREN, SRET, TXID, USID. ISO adds codes over time; use Prtry for a name of your own.";
 
-/// Scheme codes for a person's `Othr` identification (ISO 20022 external code
-/// set ExternalPersonIdentification1Code).
+/// Scheme codes for a person's `Othr` identification: the ISO 20022 external
+/// code set ExternalPersonIdentification1Code, edition 2Q2026.
 const PERSON_CODES: &[&str] = &[
-    "ARNU", "CCPT", "CUST", "DRLC", "EMPL", "NIDN", "POID", "SOSE", "TELE", "TXID",
+    "ARNU", "BANK", "CCPT", "CUST", "DRLC", "EMPL", "NIDN", "POID", "SOSE", "TELE", "TXID",
 ];
+const PERSON_CODES_HINT: &str =
+    "Codes this app knows: ARNU, BANK, CCPT, CUST, DRLC, EMPL, NIDN, POID, SOSE, TELE, TXID. \
+     ISO adds codes over time; use Prtry for a name of your own.";
 
 /// Groups of DK rules that can be switched off in the app's settings.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
@@ -964,18 +971,12 @@ impl Rules {
     /// zulässig." A warning, because ISO adds codes to the list over time.
     fn scheme_code(&mut self, value: &str, person: bool, line: u32) {
         let (key, party, hint) = if person {
-            (
-                "person-scheme-code",
-                "a person",
-                "Codes this app knows: ARNU, CCPT, CUST, DRLC, EMPL, NIDN, POID, SOSE, TELE, TXID. \
-                 ISO adds codes over time; use Prtry for a name of your own.",
-            )
+            ("person-scheme-code", "a person", PERSON_CODES_HINT)
         } else {
             (
                 "organisation-scheme-code",
                 "an organisation",
-                "Codes this app knows: BANK, BDID, BOID, CBID, CHID, CINC, COID, CUST, DUNS, EMPL, \
-                 GS1G, SREN, SRET, TXID. ISO adds codes over time; use Prtry for a name of your own.",
+                ORGANISATION_CODES_HINT,
             )
         };
         self.repeat_as(
@@ -2179,8 +2180,20 @@ mod tests {
                 &format!("                <Id>4711</Id>\n                <SchmeNm>\n                  <Cd>{code}</Cd>\n                </SchmeNm>\n"),
             )
         };
-        assert_eq!(check(&with_code("OrgId", "CUST")), vec![]);
-        assert_eq!(check(&with_code("PrvtId", "NIDN")), vec![]);
+        // Every code of the ISO sets (edition 2Q2026) is known and named in the hint.
+        assert_eq!(ORGANISATION_CODES.len(), 15);
+        assert_eq!(PERSON_CODES.len(), 11);
+        for (kind, codes, hint) in [
+            ("OrgId", ORGANISATION_CODES, ORGANISATION_CODES_HINT),
+            ("PrvtId", PERSON_CODES, PERSON_CODES_HINT),
+        ] {
+            for code in codes {
+                assert_eq!(check(&with_code(kind, code)), vec![], "{kind} {code}");
+                assert!(hint.contains(code), "{kind} {code}");
+            }
+        }
+        // The sets differ: USID is for organisations only.
+        assert_eq!(check(&with_code("PrvtId", "USID")).len(), 1);
         for (kind, code, party) in [
             ("OrgId", "NIDN", "an organisation"),
             ("PrvtId", "DUNS", "a person"),
