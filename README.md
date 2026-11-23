@@ -69,7 +69,7 @@ A native Windows application that validates one or many files at once and lets y
   - From pain.001.001.09 / pain.008.001.08 on: postal addresses with town and country and at most 2 address lines.
   - Remittance information: one `Ustrd` or one `Strd` (creditor reference `SCOR` only, at most 140 characters). An RF reference with wrong check digits is a warning.
   - `UltmtDbtr`/`UltmtCdtr` and `ChrgBr` on one level only; `ChrgBr` `SLEV` in direct debits; creditor identifier scheme `SEPA`.
-  - Accounts as IBAN, never `Othr`; a bank without a BIC as `NOTPROVIDED` (in credit transfers the creditor's bank by BIC only); control sums with at most 2 decimals.
+  - Accounts as IBAN, never `Othr`; a bank by its BIC, or `NOTPROVIDED` without one, and nothing else in `FinInstnId` (no clearing code, name or address; in credit transfers the creditor's bank by BIC only); control sums with at most 2 decimals.
   - Party identification: one of BIC, `LEI` or `Othr` per organisation (the debtor may combine them), date and place of birth or one `Othr` per person. An unknown ISO scheme code is a warning.
   - The same `MsgId` in two files of one run is a warning, which says whether the files are copies.
 - **Settings.** Menu → **Settings…** switches groups of DK usage rules off (all are on by default), e.g. the address rules if your bank still accepts unstructured addresses.
