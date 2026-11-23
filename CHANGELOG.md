@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Two ISO scheme codes no longer cause a warning.** `BANK` for a person (`PrvtId`) and `USID` for an organisation (`OrgId`) are in the ISO external code sets, but 2.9.0 reported them as unknown. The lists now match the official edition 2Q2026.
+
 ## [2.9.0] - 2026-11-17
 
 ### Added
